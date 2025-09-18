@@ -1,0 +1,80 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "panels": [
+    { "type": "stat", "title": "Kafka Sent OK", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "kafka_sent_ok"}] },
+    { "type": "stat", "title": "Kafka Sent Fail", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "targets": [{"expr": "kafka_sent_fail"}] },
+    { "type": "stat", "title": "Kafka DLQ Count", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "targets": [{"expr": "kafka_dlq_count"}] },
+    { "type": "stat", "title": "Recent Active Queue Length", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "targets": [{"expr": "recent_active_queue_length"}] },
+
+    { "type": "graph", "title": "Kafka Send Rate (/s)", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [
+        {"expr": "rate(kafka_sent_ok[5m])", "legendFormat": "ok"},
+        {"expr": "rate(kafka_sent_fail[5m])", "legendFormat": "fail"}
+      ]
+    },
+    { "type": "graph", "title": "Recent Active Flush Rate (/s)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [
+        {"expr": "rate(recent_active_flushed_total[5m])", "legendFormat": "flush rate"}
+      ]
+    },
+
+    { "type": "graph", "title": "Recent Active Enqueued/Flushed/OK/Fail (counters)", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "targets": [
+        {"expr": "recent_active_enqueued_total", "legendFormat": "enqueued"},
+        {"expr": "recent_active_flushed_total", "legendFormat": "flushed"},
+        {"expr": "recent_active_flush_ok_total", "legendFormat": "flush_ok"},
+        {"expr": "recent_active_flush_fail_total", "legendFormat": "flush_fail"}
+      ]
+    },
+
+    { "type": "graph", "title": "Node.js Heap Used vs Total (bytes)", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [
+        {"expr": "process_heap_used_bytes", "legendFormat": "heap_used"},
+        {"expr": "process_heap_total_bytes", "legendFormat": "heap_total"}
+      ]
+    },
+    { "type": "graph", "title": "System Load1", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [
+        {"expr": "system_load1", "legendFormat": "load1"}
+      ]
+    },
+
+    { "type": "stat", "title": "Process Uptime (s)", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 28}, "targets": [{"expr": "process_uptime_seconds"}] },
+    { "type": "stat", "title": "RSS Memory (bytes)", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 28}, "targets": [{"expr": "process_resident_memory_bytes"}] },
+    { "type": "stat", "title": "Last Flush Duration (ms)", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 28}, "targets": [{"expr": "recent_active_last_flush_duration_ms"}] },
+    { "type": "stat", "title": "Last Flush Timestamp (ms)", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 28}, "targets": [{"expr": "recent_active_last_flush_ts"}] },
+
+    { "type": "graph", "title": "Backend Up by Instance", "gridPos": {"h": 6, "w": 8, "x": 0, "y": 32},
+      "targets": [
+        {"expr": "up{job=\"lonely-chat-backend\"}", "legendFormat": "{{instance}}"}
+      ]
+    },
+    { "type": "graph", "title": "DLQ Rate (/s)", "gridPos": {"h": 6, "w": 8, "x": 8, "y": 32},
+      "targets": [
+        {"expr": "rate(kafka_dlq_count[5m])", "legendFormat": "dlq"}
+      ]
+    },
+    { "type": "gauge", "title": "Kafka Error Ratio (5m) %", "gridPos": {"h": 6, "w": 8, "x": 16, "y": 32},
+      "targets": [
+        {"expr": "100 * rate(kafka_sent_fail[5m]) / clamp_min(rate(kafka_sent_ok[5m]) + rate(kafka_sent_fail[5m]), 1e-9)"}
+      ]
+    },
+    { "type": "graph", "title": "Scrape Duration (s)", "gridPos": {"h": 6, "w": 12, "x": 0, "y": 38},
+      "targets": [
+        {"expr": "scrape_duration_seconds{job=\"lonely-chat-backend\"}", "legendFormat": "{{instance}}"}
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["lonely-chat"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "",
+  "title": "Lonely Chat Backend",
+  "uid": "lonely-chat-backend",
+  "version": 3
+}

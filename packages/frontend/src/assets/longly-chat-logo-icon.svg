@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="longly chat smiley icon">
+  <title>longly chat smiley icon</title>
+  <defs>
+    <linearGradient id="brandGradientIcon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22C1C3"/>
+      <stop offset="100%" stop-color="#1D8FE1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Circle badge -->
+  <circle cx="32" cy="32" r="28" fill="url(#brandGradientIcon)"/>
+  <!-- Eyes -->
+  <circle cx="24" cy="28" r="3" fill="#fff"/>
+  <circle cx="40" cy="28" r="3" fill="#fff"/>
+  <!-- Smile -->
+  <path d="M22 36 C 26 44, 38 44, 42 36" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+</svg>

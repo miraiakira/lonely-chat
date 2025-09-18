@@ -29,7 +29,7 @@ let UserService = class UserService {
         this.userProfileRepository = userProfileRepository;
     }
     async findOneByUsername(username) {
-        return this.userRepository.findOne({ where: { username }, relations: ['roles'] });
+        return this.userRepository.findOne({ where: { username }, relations: ['roles', 'roles.permissions', 'profile'] });
     }
     async findOne(id) {
         return this.userRepository.findOne({ where: { id }, relations: ['roles', 'profile'] });
@@ -61,7 +61,7 @@ let UserService = class UserService {
         if (!user) {
             throw new Error('User not found');
         }
-        const roles = await this.roleRepository.findByIds(assignRolesDto.roleIds);
+        const roles = await this.roleRepository.findBy({ id: (0, typeorm_2.In)(assignRolesDto.roleIds) });
         user.roles = roles;
         return this.userRepository.save(user);
     }
@@ -83,6 +83,33 @@ let UserService = class UserService {
         }
         await this.userProfileRepository.save(profile);
         return this.userRepository.save(user);
+    }
+    async findRecent(limit = 5) {
+        return this.userRepository
+            .createQueryBuilder('user')
+            .leftJoinAndSelect('user.profile', 'profile')
+            .orderBy('user.createdAt', 'DESC')
+            .take(limit)
+            .getMany();
+    }
+    async setRefreshTokenHash(userId, hash) {
+        await this.userRepository.update({ id: userId }, { hashedRefreshToken: hash });
+    }
+    async clearRefreshTokenHash(userId) {
+        await this.userRepository.update({ id: userId }, { hashedRefreshToken: null });
+    }
+    async searchUsers(q, limit = 20) {
+        const query = (q || '').trim();
+        if (!query)
+            return [];
+        return this.userRepository
+            .createQueryBuilder('user')
+            .leftJoinAndSelect('user.profile', 'profile')
+            .where('user.username ILIKE :q', { q: `%${query}%` })
+            .orWhere('profile.nickname ILIKE :q', { q: `%${query}%` })
+            .orderBy('user.createdAt', 'DESC')
+            .take(Math.max(1, Math.min(50, limit)))
+            .getMany();
     }
 };
 exports.UserService = UserService;

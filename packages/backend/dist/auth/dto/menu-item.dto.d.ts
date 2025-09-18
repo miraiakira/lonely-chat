@@ -1,10 +1,13 @@
 export interface MenuItem {
-    id: string;
+    id: number;
     title: string;
-    path?: string;
+    path: string;
     icon?: string;
     children?: MenuItem[];
     permissions?: string[];
+    i18nKey?: string;
+    isExternal?: boolean;
+    externalUrl?: string;
 }
 export declare class MenuResponseDto {
     menus: MenuItem[];

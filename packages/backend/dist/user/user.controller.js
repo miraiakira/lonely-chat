@@ -20,19 +20,44 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const user_service_1 = require("./user.service");
 const create_user_dto_1 = require("./dto/create-user.dto");
 const assign_roles_dto_1 = require("./dto/assign-roles.dto");
+const common_2 = require("@nestjs/common");
+const redis_module_1 = require("../redis/redis.module");
+const permissions_decorator_1 = require("../auth/decorators/permissions.decorator");
+const permissions_guard_1 = require("../auth/guards/permissions.guard");
 let UserController = class UserController {
     userService;
-    constructor(userService) {
+    redis;
+    constructor(userService, redis) {
         this.userService = userService;
-    }
-    createAdmin(createUserDto) {
-        return this.userService.create(createUserDto, ['admin']);
+        this.redis = redis;
     }
     create(createUserDto) {
         return this.userService.create(createUserDto);
     }
     findAll() {
         return this.userService.findAll();
+    }
+    findRecent(limit) {
+        const take = Math.max(1, Math.min(20, Number(limit) || 5));
+        return this.userService.findRecent(take);
+    }
+    async findRecentActive(limit) {
+        const take = Math.max(1, Math.min(50, Number(limit) || 20));
+        const ids = await this.redis.zrevrange('recent:active_users', 0, take - 1);
+        if (!ids.length)
+            return [];
+        const users = await Promise.all(ids.map((id) => this.userService.findOne(Number(id))));
+        return users.filter(Boolean);
+    }
+    async search(q, limit) {
+        const take = Math.max(1, Math.min(50, Number(limit) || 20));
+        return this.userService.searchUsers(q, take);
+    }
+    async findByUsername(username) {
+        const user = await this.userService.findOneByUsername(username);
+        if (!user)
+            throw new common_2.NotFoundException('User not found');
+        return user;
     }
     remove(id) {
         return this.userService.remove(+id);
@@ -49,14 +74,9 @@ let UserController = class UserController {
 };
 exports.UserController = UserController;
 __decorate([
-    (0, common_1.Post)('admin'),
-    __param(0, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_user_dto_1.CreateUserDto]),
-    __metadata("design:returntype", void 0)
-], UserController.prototype, "createAdmin", null);
-__decorate([
-    (0, common_1.Post)('register'),
+    (0, common_1.Post)(),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:manage', 'manage_users'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_user_dto_1.CreateUserDto]),
@@ -64,14 +84,51 @@ __decorate([
 ], UserController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:read'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], UserController.prototype, "findAll", null);
 __decorate([
-    (0, common_1.Delete)(':id'),
+    (0, common_1.Get)('recent'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:read'),
+    __param(0, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], UserController.prototype, "findRecent", null);
+__decorate([
+    (0, common_1.Get)('recent-active'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:read'),
+    __param(0, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "findRecentActive", null);
+__decorate([
+    (0, common_1.Get)('search'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Query)('q')),
+    __param(1, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "search", null);
+__decorate([
+    (0, common_1.Get)('by-username/:username'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Param)('username')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "findByUsername", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:manage', 'manage_users'),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -79,7 +136,8 @@ __decorate([
 ], UserController.prototype, "remove", null);
 __decorate([
     (0, common_1.Patch)(':id'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:manage', 'manage_users'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -88,7 +146,8 @@ __decorate([
 ], UserController.prototype, "update", null);
 __decorate([
     (0, common_1.Post)(':id/roles'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, permissions_guard_1.PermissionsGuard),
+    (0, permissions_decorator_1.Permissions)('user:manage', 'manage_users'),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -105,6 +164,7 @@ __decorate([
 ], UserController.prototype, "protectedResource", null);
 exports.UserController = UserController = __decorate([
     (0, common_1.Controller)('user'),
-    __metadata("design:paramtypes", [user_service_1.UserService])
+    __param(1, (0, common_2.Inject)(redis_module_1.REDIS_CLIENT)),
+    __metadata("design:paramtypes", [user_service_1.UserService, Object])
 ], UserController);
 //# sourceMappingURL=user.controller.js.map

@@ -55,6 +55,9 @@ let User = class User {
     createdAt;
     updatedAt;
     profile;
+    hashedRefreshToken;
+    mutedUntil;
+    bannedUntil;
     async hashPassword() {
         this.password = await bcrypt.hash(this.password, 10);
     }
@@ -89,6 +92,18 @@ __decorate([
     (0, typeorm_1.OneToOne)(() => user_profile_entity_1.UserProfile, profile => profile.user, { cascade: true }),
     __metadata("design:type", user_profile_entity_1.UserProfile)
 ], User.prototype, "profile", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "hashedRefreshToken", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "mutedUntil", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "bannedUntil", void 0);
 __decorate([
     (0, typeorm_1.BeforeInsert)(),
     __metadata("design:type", Function),

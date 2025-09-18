@@ -20,6 +20,7 @@ exports.MenuModule = MenuModule = __decorate([
         imports: [typeorm_1.TypeOrmModule.forFeature([menu_entity_1.Menu])],
         controllers: [menu_controller_1.MenuController],
         providers: [menu_service_1.MenuService],
+        exports: [menu_service_1.MenuService],
     })
 ], MenuModule);
 //# sourceMappingURL=menu.module.js.map

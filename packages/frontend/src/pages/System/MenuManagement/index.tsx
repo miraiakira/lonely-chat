@@ -1,4 +1,4 @@
-import { getMenus } from '@/services/api';
+import { getMenuTree } from '@/services/api';
 import { PageContainer } from '@ant-design/pro-layout';
 import { Table } from 'antd';
 import { useEffect, useState } from 'react';
@@ -8,8 +8,8 @@ const MenuManagement = () => {
   const [menus, setMenus] = useState([]);
 
   const fetchMenus = async () => {
-    const res = await getMenus();
-    setMenus(res.data);
+    const res = await getMenuTree();
+    setMenus(res);
   };
 
   useEffect(() => {
@@ -17,10 +17,11 @@ const MenuManagement = () => {
   }, []);
 
   const columns = [
+    // 移除 ID 列
     {
       title: '菜单名称',
-      dataIndex: 'name',
-      key: 'name',
+      dataIndex: 'title',
+      key: 'title',
     },
     {
       title: '路径',
@@ -33,13 +34,20 @@ const MenuManagement = () => {
       key: 'component',
     },
     {
-      title: '操作',
-      key: 'action',
-      render: () => (
-        <a>
-          编辑
-        </a>
-      ),
+      title: '图标',
+      dataIndex: 'icon',
+      key: 'icon',
+    },
+    {
+      title: '排序',
+      dataIndex: 'order',
+      key: 'order',
+    },
+    {
+      title: '是否外链',
+      dataIndex: 'isExternal',
+      key: 'isExternal',
+      render: (v: boolean) => (v ? '是' : '否'),
     },
   ];
 

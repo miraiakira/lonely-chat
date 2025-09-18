@@ -23,6 +23,7 @@ const config_1 = require("@nestjs/config");
 const jwt_strategy_1 = require("./strategies/jwt.strategy");
 const local_strategy_1 = require("./strategies/local.strategy");
 const auth_controller_1 = require("./auth.controller");
+const menu_module_1 = require("../menu/menu.module");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -31,6 +32,7 @@ exports.AuthModule = AuthModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([role_entity_1.Role, permission_entity_1.Permission]),
             (0, common_1.forwardRef)(() => user_module_1.UserModule),
+            menu_module_1.MenuModule,
             passport_1.PassportModule,
             jwt_1.JwtModule.registerAsync({
                 imports: [config_1.ConfigModule],
@@ -43,7 +45,7 @@ exports.AuthModule = AuthModule = __decorate([
         ],
         controllers: [role_controller_1.RoleController, auth_controller_1.AuthController, permission_controller_1.PermissionController],
         providers: [role_service_1.RoleService, auth_service_1.AuthService, jwt_strategy_1.JwtStrategy, local_strategy_1.LocalStrategy, permission_service_1.PermissionService],
-        exports: [typeorm_1.TypeOrmModule, auth_service_1.AuthService, role_service_1.RoleService, permission_service_1.PermissionService],
+        exports: [typeorm_1.TypeOrmModule, auth_service_1.AuthService, role_service_1.RoleService, permission_service_1.PermissionService, jwt_1.JwtModule],
     })
 ], AuthModule);
 //# sourceMappingURL=auth.module.js.map

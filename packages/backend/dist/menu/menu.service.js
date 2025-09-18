@@ -22,8 +22,91 @@ let MenuService = class MenuService {
     constructor(menuRepository) {
         this.menuRepository = menuRepository;
     }
-    create(createMenuDto) {
-        const menu = this.menuRepository.create(createMenuDto);
+    async onModuleInit() {
+        const count = await this.menuRepository.count();
+        if (count === 0) {
+            await this.seedDefaultMenus();
+        }
+    }
+    async seedDefaultMenus() {
+        const dashboard = this.menuRepository.create({
+            title: '仪表盘',
+            i18nKey: 'menu.dashboard',
+            path: '/dashboard',
+            component: 'Dashboard',
+            icon: 'DashboardOutlined',
+            order: 0,
+            isExternal: false,
+            hidden: false,
+            permissions: null,
+        });
+        const users = this.menuRepository.create({
+            title: '用户管理',
+            i18nKey: 'menu.users',
+            path: '/users',
+            component: 'UserManagement',
+            icon: 'UserOutlined',
+            order: 1,
+            isExternal: false,
+            hidden: false,
+            permissions: null,
+        });
+        const roles = this.menuRepository.create({
+            title: '角色管理',
+            i18nKey: 'menu.roles',
+            path: '/roles',
+            component: 'RoleManagement',
+            icon: 'TeamOutlined',
+            order: 2,
+            isExternal: false,
+            hidden: false,
+            permissions: null,
+        });
+        const permissions = this.menuRepository.create({
+            title: '权限管理',
+            i18nKey: 'menu.permissions',
+            path: '/permissions',
+            component: 'PermissionManagement',
+            icon: 'SafetyOutlined',
+            order: 3,
+            isExternal: false,
+            hidden: false,
+            permissions: null,
+        });
+        await this.menuRepository.save([dashboard, users, roles, permissions]);
+        const system = this.menuRepository.create({
+            title: '系统设置',
+            i18nKey: 'menu.system',
+            path: '/system',
+            icon: 'SettingOutlined',
+            order: 90,
+            isExternal: false,
+            hidden: false,
+            permissions: null,
+        });
+        await this.menuRepository.save(system);
+        const menuMgmt = this.menuRepository.create({
+            title: '菜单管理',
+            i18nKey: 'menu.system.menus',
+            path: '/system/menus',
+            component: 'System/MenuManagement',
+            icon: 'SettingOutlined',
+            order: 1,
+            isExternal: false,
+            hidden: false,
+            permissions: null,
+            parent: system,
+        });
+        await this.menuRepository.save(menuMgmt);
+    }
+    async create(createMenuDto) {
+        const { parentId, ...rest } = createMenuDto;
+        const menu = this.menuRepository.create(rest);
+        if (parentId) {
+            const parent = await this.menuRepository.findOne({ where: { id: parentId } });
+            if (parent)
+                menu.parent = parent;
+        }
         return this.menuRepository.save(menu);
     }
     findAll() {

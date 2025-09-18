@@ -7,5 +7,6 @@ import { MulterModule } from '@nestjs/platform-express';
   imports: [MulterModule.register({ dest: './uploads' })],
   controllers: [FileController],
   providers: [FileService],
+  exports: [FileService],
 })
 export class FileModule {}

@@ -14,10 +14,15 @@ const typeorm_1 = require("typeorm");
 let Menu = class Menu {
     id;
     title;
+    i18nKey;
     icon;
     path;
     component;
     order;
+    permissions;
+    isExternal;
+    externalUrl;
+    hidden;
     children;
     parent;
 };
@@ -33,19 +38,39 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
+], Menu.prototype, "i18nKey", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
 ], Menu.prototype, "icon", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
 ], Menu.prototype, "path", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], Menu.prototype, "component", void 0);
 __decorate([
     (0, typeorm_1.Column)({ default: 0 }),
     __metadata("design:type", Number)
 ], Menu.prototype, "order", void 0);
+__decorate([
+    (0, typeorm_1.Column)('simple-array', { nullable: true }),
+    __metadata("design:type", Array)
+], Menu.prototype, "permissions", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Menu.prototype, "isExternal", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Menu.prototype, "externalUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Menu.prototype, "hidden", void 0);
 __decorate([
     (0, typeorm_1.TreeChildren)(),
     __metadata("design:type", Array)

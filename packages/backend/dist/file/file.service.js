@@ -74,14 +74,48 @@ let FileService = FileService_1 = class FileService {
         else {
             this.logger.log(`Bucket ${this.bucketName} already exists.`);
         }
+        try {
+            const policy = {
+                Version: '2012-10-17',
+                Statement: [
+                    {
+                        Effect: 'Allow',
+                        Principal: { AWS: ['*'] },
+                        Action: ['s3:GetBucketLocation', 's3:ListBucket'],
+                        Resource: [`arn:aws:s3:::${this.bucketName}`],
+                    },
+                    {
+                        Effect: 'Allow',
+                        Principal: { AWS: ['*'] },
+                        Action: ['s3:GetObject'],
+                        Resource: [`arn:aws:s3:::${this.bucketName}/*`],
+                    },
+                ],
+            };
+            await this.minioClient.setBucketPolicy(this.bucketName, JSON.stringify(policy));
+            this.logger.log(`Public read policy applied to bucket ${this.bucketName}.`);
+        }
+        catch (e) {
+            this.logger.warn(`Failed to set bucket policy: ${String(e)}`);
+        }
     }
     async uploadFile(file) {
         const fileName = `${Date.now()}-${file.originalname}`;
         const fileStream = fs.createReadStream(file.path);
-        await this.minioClient.putObject(this.bucketName, fileName, fileStream, file.size);
+        await this.minioClient.putObject(this.bucketName, fileName, fileStream, file.size, {
+            'Content-Type': file.mimetype || 'application/octet-stream',
+        });
         await fs.promises.unlink(file.path);
         return {
-            url: `http://${this.configService.get('MINIO_ENDPOINT', 'localhost')}:${this.configService.get('MINIO_PORT', '9000')}/${this.bucketName}/${fileName}`,
+            url: `http://${this.configService.get('MINIO_EXTERNAL_ENDPOINT', 'localhost')}:${this.configService.get('MINIO_PORT', '9000')}/${this.bucketName}/${fileName}`,
+        };
+    }
+    async uploadBuffer(buffer, fileName, contentType = 'application/octet-stream') {
+        await this.minioClient.putObject(this.bucketName, fileName, buffer, buffer.length, {
+            'Content-Type': contentType,
+        });
+        return {
+            url: `http://${this.configService.get('MINIO_EXTERNAL_ENDPOINT', 'localhost')}:${this.configService.get('MINIO_PORT', '9000')}/${this.bucketName}/${fileName}`,
         };
     }
 };

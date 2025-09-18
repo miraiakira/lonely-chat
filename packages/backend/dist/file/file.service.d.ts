@@ -10,4 +10,7 @@ export declare class FileService implements OnModuleInit {
     uploadFile(file: Express.Multer.File): Promise<{
         url: string;
     }>;
+    uploadBuffer(buffer: Buffer, fileName: string, contentType?: string): Promise<{
+        url: string;
+    }>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Table, Typography, Button, Modal, Form, Input, Upload, Select, Avatar } from 'antd';
+import { Table, Typography, Button, Modal, Form, Input, Upload, Select, Avatar, App as AntdApp } from 'antd';
 import { UploadOutlined, UserOutlined } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import { getUsers, getRoles, assignRoles, deleteUser, updateUser, createUser } from '../../services/api';
@@ -50,20 +50,21 @@ const UserManagement = () => {
     }
   };
 
+  const { modal } = AntdApp.useApp();
   const handleDeleteUser = (id: number) => {
-    Modal.confirm({
-      title: '确认删除',
-      content: '您确定要删除该用户吗？',
-      onOk: async () => {
-        try {
-          await deleteUser(id);
-          fetchUsers(); // Refresh the user list
-        } catch (error) {
-          console.error('Failed to delete user:', error);
-        }
-      },
-    });
-  };
+    modal.confirm({
+       title: '确认删除',
+       content: '您确定要删除该用户吗？',
+       onOk: async () => {
+         try {
+           await deleteUser(id);
+           fetchUsers(); // Refresh the user list
+         } catch (error) {
+           console.error('Failed to delete user:', error);
+         }
+       },
+     });
+   };
 
   const showEditModal = (user: User) => {
     setEditingUser(user);
@@ -158,7 +159,7 @@ const UserManagement = () => {
         <Button type="primary" onClick={() => setIsModalVisible(true)}>创建用户</Button>
       </div>
       <Table columns={columns} dataSource={users} rowKey="id" />
-      <Modal title={editingUser ? '编辑用户' : '创建用户'} visible={isModalVisible} onCancel={() => { setIsModalVisible(false); setEditingUser(null); }} footer={null}>
+      <Modal title={editingUser ? '编辑用户' : '创建用户'} open={isModalVisible} onCancel={() => { setIsModalVisible(false); setEditingUser(null); }} footer={null}>
         <Form form={form} onFinish={editingUser ? handleUpdateUser : handleCreateUser}>
           {editingUser && (
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -182,10 +183,10 @@ const UserManagement = () => {
               <Form.Item label="昵称" name="nickname">
                 <Input />
               </Form.Item>
-              <Form.Item label="头像" name="avatar">
+              <Form.Item label="头像">
                 <Upload
                   name="file"
-                  action="/api/file/upload"
+                  action="http://localhost:3030/api/file/upload"
                   listType="picture"
                   maxCount={1}
                   onChange={(info: any) => {
@@ -196,6 +197,9 @@ const UserManagement = () => {
                 >
                   <Button icon={<UploadOutlined />}>点击上传</Button>
                 </Upload>
+              </Form.Item>
+              <Form.Item name="avatar" hidden>
+                <Input />
               </Form.Item>
               <Form.Item label="性别" name="gender">
                 <Select options={[{ label: '男', value: 'male' }, { label: '女', value: 'female' }]} />

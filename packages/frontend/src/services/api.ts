@@ -10,12 +10,32 @@ export const getMenus = async () => {
   }
 };
 
+export const getMenuTree = async () => {
+  try {
+    const response = await apiClient.get('/menu');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch menu tree:', error);
+    throw error;
+  }
+};
+
 export const getRoles = async () => {
   try {
     const response = await apiClient.get('/roles');
     return response.data;
   } catch (error) {
     console.error('Failed to fetch roles:', error);
+    throw error;
+  }
+};
+
+export const createRole = async (data: any) => {
+  try {
+    const response = await apiClient.post('/roles', data);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to create role:', error);
     throw error;
   }
 };
@@ -62,7 +82,7 @@ export const assignRoles = async (userId: number, roleIds: number[]) => {
 
 export const createUser = async (data: any) => {
   try {
-    const response = await apiClient.post('/user/register', data);
+    const response = await apiClient.post('/user', data);
     return response.data;
   } catch (error) {
     console.error('Failed to create user:', error);
@@ -111,4 +131,66 @@ export const createPermission = async (data: any) => {
     console.error('Failed to create permission:', error);
     throw error;
   }
+};
+
+export const getMe = async () => {
+  try {
+    const response = await apiClient.get('/auth/me');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch current user:', error);
+    throw error;
+  }
+};
+
+export const getSystemOverview = async () => {
+  try {
+    const response = await apiClient.get('/system/overview');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch system overview:', error);
+    throw error;
+  }
+};
+
+export const getRecentUsers = async (limit = 5) => {
+  try {
+    const response = await apiClient.get(`/user/recent`, { params: { limit } });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch recent users:', error);
+    throw error;
+  }
+};
+
+export const adminSearchMessages = async (params: { q?: string; page?: number; pageSize?: number }) => {
+  const res = await apiClient.get('/admin/messages/search', { params });
+  return res.data;
+};
+
+export const adminSoftDeleteMessage = async (id: number, adminId?: number) => {
+  const res = await apiClient.patch(`/admin/messages/${id}/soft-delete`, adminId ? { adminId } : {});
+  return res.data;
+};
+
+export const adminMuteUser = async (id: number, until?: string | null) => {
+  const res = await apiClient.post(`/admin/users/${id}/mute`, { until: until ?? null });
+  return res.data;
+};
+
+export const adminLockConversation = async (id: number, lock = true) => {
+  const url = lock ? `/admin/conversations/${id}/lock` : `/admin/conversations/${id}/unlock`;
+  const res = await apiClient.post(url, lock ? { lock: true } : undefined);
+  return res.data;
+};
+
+export const adminSetConversationNotice = async (id: number, notice?: string | null) => {
+  const res = await apiClient.patch(`/admin/conversations/${id}/notice`, { notice: notice ?? null });
+  return res.data;
+};
+
+// 新增：管理员会话列表（可搜索 + 分页）
+export const adminListConversations = async (params: { q?: string; page?: number; pageSize?: number } = {}) => {
+  const res = await apiClient.get('/admin/conversations', { params });
+  return res.data;
 };

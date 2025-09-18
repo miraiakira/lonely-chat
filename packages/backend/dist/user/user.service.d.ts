@@ -18,4 +18,8 @@ export declare class UserService {
     update(id: number, updateUserDto: UpdateUserDto, updateUserProfileDto: UpdateUserProfileDto): Promise<User>;
     assignRoles(id: number, assignRolesDto: AssignRolesDto): Promise<User>;
     create(createUserDto: CreateUserDto, roleNames?: string[]): Promise<User>;
+    findRecent(limit?: number): Promise<User[]>;
+    setRefreshTokenHash(userId: number, hash: string): Promise<void>;
+    clearRefreshTokenHash(userId: number): Promise<void>;
+    searchUsers(q: string, limit?: number): Promise<User[]>;
 }

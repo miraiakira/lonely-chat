@@ -1,10 +1,43 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
@@ -17,6 +50,14 @@ const config_1 = require("@nestjs/config");
 const file_module_1 = require("./file/file.module");
 const seed_module_1 = require("./database/seeds/seed.module");
 const menu_module_1 = require("./menu/menu.module");
+const path = __importStar(require("path"));
+const system_module_1 = require("./system/system.module");
+const redis_module_1 = require("./redis/redis.module");
+const kafka_module_1 = require("./kafka/kafka.module");
+const chat_module_1 = require("./chat/chat.module");
+const realtime_module_1 = require("./realtime/realtime.module");
+const friend_module_1 = require("./friend/friend.module");
+const posts_module_1 = require("./posts/posts.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -25,6 +66,12 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
+                envFilePath: [
+                    path.resolve(process.cwd(), '../../.env.local'),
+                    path.resolve(process.cwd(), '.env.local'),
+                    path.resolve(process.cwd(), '../../.env'),
+                    path.resolve(process.cwd(), '.env'),
+                ],
             }),
             auth_module_1.AuthModule,
             seed_module_1.SeedModule,
@@ -33,11 +80,11 @@ exports.AppModule = AppModule = __decorate([
                 imports: [config_1.ConfigModule],
                 useFactory: (configService) => ({
                     type: 'postgres',
-                    host: configService.get('DB_HOST'),
-                    port: configService.get('DB_PORT'),
-                    username: configService.get('DB_USERNAME'),
-                    password: configService.get('DB_PASSWORD'),
-                    database: configService.get('DB_DATABASE'),
+                    host: configService.get('DB_HOST', 'localhost'),
+                    port: Number(configService.get('DB_PORT', '5432')),
+                    username: configService.get('DB_USERNAME', 'admin'),
+                    password: String(configService.get('DB_PASSWORD', '111111')),
+                    database: configService.get('DB_DATABASE', 'lonely_chat'),
                     entities: [__dirname + '/**/*.entity{.ts,.js}'],
                     synchronize: true,
                 }),
@@ -45,6 +92,13 @@ exports.AppModule = AppModule = __decorate([
             }),
             user_module_1.UserModule,
             file_module_1.FileModule,
+            system_module_1.SystemModule,
+            redis_module_1.RedisModule,
+            kafka_module_1.KafkaModule,
+            chat_module_1.ChatModule,
+            realtime_module_1.RealtimeModule,
+            friend_module_1.FriendModule,
+            posts_module_1.PostsModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

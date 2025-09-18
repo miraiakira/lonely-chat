@@ -23,17 +23,63 @@ import {
   LikeOutlined,
   CommentOutlined
 } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
+import { getSystemOverview, getRecentUsers } from '../../services/api';
+import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
 
 const Dashboard: React.FC = () => {
-  // 模拟数据
-  const recentUsers = [
-    { id: 1, name: '张三', avatar: '', time: '2分钟前', status: 'online' },
-    { id: 2, name: '李四', avatar: '', time: '5分钟前', status: 'offline' },
-    { id: 3, name: '王五', avatar: '', time: '10分钟前', status: 'online' },
-    { id: 4, name: '赵六', avatar: '', time: '15分钟前', status: 'away' },
-  ];
+  const { t } = useTranslation();
+  const [overview, setOverview] = useState<any>(null);
+  const [loadingOverview, setLoadingOverview] = useState(false);
+
+  const [recentUsers, setRecentUsers] = useState<any[]>([]);
+  const [loadingRecentUsers, setLoadingRecentUsers] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingOverview(true);
+        const data = await getSystemOverview();
+        if (mounted) setOverview(data);
+      } catch (e) {
+        // noop, rely on UI fallback
+      } finally {
+        setLoadingOverview(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingRecentUsers(true);
+        const users = await getRecentUsers(5);
+        if (!mounted) return;
+        const mapped = (users || []).map((u: any) => ({
+          id: u.id,
+          name: u?.profile?.nickname || u?.username || `用户#${u?.id}`,
+          avatar: u?.profile?.avatar || '',
+          time: u?.createdAt ? new Date(u.createdAt).toLocaleString() : '-',
+          status: 'offline' as const,
+        }));
+        setRecentUsers(mapped);
+      } catch (e) {
+        // keep empty recent users on error
+      } finally {
+        setLoadingRecentUsers(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const recentMessages = [
     { id: 1, user: '张三', content: '大家好，很高兴加入这个平台！', time: '刚刚' },
@@ -42,56 +88,58 @@ const Dashboard: React.FC = () => {
     { id: 4, user: '赵六', content: '期待更多新功能的上线', time: '12分钟前' },
   ];
 
-  const tableData = [
+  const tableData = overview ? [
     {
-      key: '1',
-      name: '用户管理',
-      visits: 1234,
+      key: 'users',
+      name: t('dashboard.entities.users'),
+      count: overview.db?.counts?.users ?? 0,
+      status: overview.db?.status === 'up' ? 'active' : 'inactive',
+      updateTime: overview.db?.latestTimes?.userUpdatedAt
+        ? new Date(overview.db.latestTimes.userUpdatedAt).toLocaleString()
+        : '-',
+    },
+    {
+      key: 'roles',
+      name: t('dashboard.entities.roles'),
+      count: overview.db?.counts?.roles ?? 0,
       status: 'active',
-      updateTime: '2024-01-15 10:30:00',
+      updateTime: '-',
     },
     {
-      key: '2',
-      name: '消息系统',
-      visits: 856,
+      key: 'permissions',
+      name: t('dashboard.entities.permissions'),
+      count: overview.db?.counts?.permissions ?? 0,
       status: 'active',
-      updateTime: '2024-01-15 09:45:00',
+      updateTime: '-',
     },
-    {
-      key: '3',
-      name: '权限管理',
-      visits: 432,
-      status: 'inactive',
-      updateTime: '2024-01-14 16:20:00',
-    },
-  ];
+  ] : [];
 
   const columns = [
     {
-      title: '模块名称',
+      title: t('dashboard.labels.name'),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: '访问量',
-      dataIndex: 'visits',
-      key: 'visits',
-      render: (visits: number) => (
-        <Text strong>{visits.toLocaleString()}</Text>
+      title: t('dashboard.labels.count'),
+      dataIndex: 'count',
+      key: 'count',
+      render: (count: number) => (
+        <Text strong>{Number(count ?? 0).toLocaleString()}</Text>
       ),
     },
     {
-      title: '状态',
+      title: t('dashboard.labels.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
         <Tag color={status === 'active' ? 'green' : 'red'}>
-          {status === 'active' ? '正常' : '停用'}
+          {status === 'active' ? t('dashboard.statusTag.active') : t('dashboard.statusTag.inactive')}
         </Tag>
       ),
     },
     {
-      title: '更新时间',
+      title: t('dashboard.labels.updateTime'),
       dataIndex: 'updateTime',
       key: 'updateTime',
     },
@@ -99,116 +147,119 @@ const Dashboard: React.FC = () => {
 
   return (
     <>
-
-      {/* 统计卡片 */}
       <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card loading={loadingOverview}>
             <Statistic
-              title="总用户数"
-              value={11280}
+              title={t('dashboard.cards.totalUsers')}
+              value={overview?.db?.counts?.users ?? 0}
               precision={0}
               valueStyle={{ color: '#3f8600' }}
               prefix={<UserOutlined />}
-              suffix={<ArrowUpOutlined style={{ fontSize: '12px' }} />}
             />
             <div style={{ marginTop: '8px' }}>
-              <Text type="secondary">较昨日 +12%</Text>
+              <Text type="secondary">{t('dashboard.cards.fromOverview')}</Text>
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card loading={loadingOverview}>
             <Statistic
-              title="今日消息"
-              value={1563}
+              title={t('dashboard.cards.todayNewUsers')}
+              value={overview?.db?.counts?.todayNewUsers ?? 0}
               precision={0}
               valueStyle={{ color: '#1890ff' }}
               prefix={<MessageOutlined />}
-              suffix={<ArrowUpOutlined style={{ fontSize: '12px' }} />}
             />
             <div style={{ marginTop: '8px' }}>
-              <Text type="secondary">较昨日 +8%</Text>
+              <Text type="secondary">{t('dashboard.cards.todaySince0')}</Text>
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card loading={loadingOverview}>
             <Statistic
-              title="在线用户"
-              value={892}
+              title={t('dashboard.cards.roles')}
+              value={overview?.db?.counts?.roles ?? 0}
               precision={0}
               valueStyle={{ color: '#52c41a' }}
               prefix={<TeamOutlined />}
             />
             <div style={{ marginTop: '8px' }}>
-              <Text type="secondary">实时数据</Text>
+              <Text type="secondary">{t('dashboard.cards.fromOverview')}</Text>
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card loading={loadingOverview}>
             <Statistic
-              title="系统性能"
-              value={98.5}
+              title={t('dashboard.cards.systemPerf')}
+              value={overview?.system?.performanceScore ?? 0}
               precision={1}
               valueStyle={{ color: '#722ed1' }}
               prefix={<RiseOutlined />}
               suffix="%"
             />
             <div style={{ marginTop: '8px' }}>
-              <Text type="secondary">运行良好</Text>
+              <Text type="secondary">{t('dashboard.cards.perfNote')}</Text>
             </div>
           </Card>
         </Col>
       </Row>
 
-      {/* 主要内容区域 */}
       <Row gutter={[16, 16]}>
-        {/* 左侧内容 */}
         <Col xs={24} lg={16}>
-          {/* 系统概览 */}
-          <Card title="系统概览" style={{ marginBottom: '16px' }}>
-            <Row gutter={[16, 16]}>
-              <Col span={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <Progress type="circle" percent={75} size={80} />
-                  <div style={{ marginTop: '8px' }}>CPU 使用率</div>
-                </div>
-              </Col>
-              <Col span={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <Progress type="circle" percent={60} size={80} strokeColor="#52c41a" />
-                  <div style={{ marginTop: '8px' }}>内存使用率</div>
-                </div>
-              </Col>
-              <Col span={8}>
-                <div style={{ textAlign: 'center' }}>
-                  <Progress type="circle" percent={45} size={80} strokeColor="#1890ff" />
-                  <div style={{ marginTop: '8px' }}>磁盘使用率</div>
-                </div>
-              </Col>
-            </Row>
+          <Card title={t('dashboard.sections.overview')} style={{ marginBottom: '16px' }} loading={loadingOverview}>
+          {overview ? (
+          <Row gutter={[16, 16]}>
+          <Col span={12}>
+          <Card size="small" title={t('dashboard.sections.runtime')}>
+          <div>{t('dashboard.labels.currentTime')}：{new Date(overview.runtime.now).toLocaleString()}</div>
+          <div>{t('dashboard.labels.uptime')}：{overview.runtime.uptimeSec}s</div>
+          <div>{t('dashboard.labels.node')}：{overview.runtime.node}</div>
+          <div>{t('dashboard.labels.env')}：{overview.app.env}</div>
+          <div>{t('dashboard.labels.app')}：{overview.app.name} v{overview.app.version}</div>
+          </Card>
+          </Col>
+          <Col span={12}>
+          <Card size="small" title={t('dashboard.sections.system')}>
+          <div>{t('dashboard.labels.platform')}：{overview.system.platform} / {overview.system.arch}</div>
+          <div>{t('dashboard.labels.memory')}：rss {overview.system.memoryMB.rss}MB，heapUsed {overview.system.memoryMB.heapUsed}MB</div>
+          <div>{t('dashboard.labels.load')}：{overview.system.loadAvg.join(' , ')}</div>
+          </Card>
+          </Col>
+          <Col span={24}>
+          <Card size="small" title={t('dashboard.sections.database')}>
+          <div>{t('dashboard.labels.status')}：{overview.db.status}</div>
+          <div>{t('dashboard.labels.latency')}：{overview.db.latencyMs}ms</div>
+          {typeof overview.db.counts?.users === 'number' && (
+          <div>{t('dashboard.labels.usersTotal')}：{overview.db.counts.users}</div>
+          )}
+          </Card>
+          </Col>
+          </Row>
+          ) : (
+          <Text type="secondary">{t('dashboard.loading.fetchingOverview')}</Text>
+          )}
           </Card>
 
-          {/* 模块访问统计 */}
-          <Card title="模块访问统计">
+          <Card title={t('dashboard.sections.entityStats')}>
             <Table
               columns={columns}
               dataSource={tableData}
               pagination={false}
               size="middle"
+              loading={loadingOverview}
             />
           </Card>
         </Col>
 
-        {/* 右侧内容 */}
         <Col xs={24} lg={8}>
-          {/* 最近用户 */}
-          <Card title="最近用户" style={{ marginBottom: '16px' }}>
+          <Card title={t('dashboard.sections.recentUsers')} style={{ marginBottom: '16px' }} loading={loadingRecentUsers}>
             <List
               itemLayout="horizontal"
               dataSource={recentUsers}
+              locale={{ emptyText: t('dashboard.empty.recentUsers') }}
               renderItem={(item) => (
                 <List.Item>
                   <List.Item.Meta
@@ -230,20 +281,20 @@ const Dashboard: React.FC = () => {
                       item.status === 'away' ? 'orange' : 'default'
                     }
                   >
-                    {item.status === 'online' ? '在线' :
-                     item.status === 'away' ? '离开' : '离线'}
+                    {item.status === 'online' ? t('dashboard.statusTag.online') :
+                     item.status === 'away' ? t('dashboard.statusTag.away') : t('dashboard.statusTag.offline')}
                   </Tag>
                 </List.Item>
               )}
             />
           </Card>
 
-          {/* 最近消息 */}
-          <Card title="最近消息">
+          <Card title={t('dashboard.sections.recentMessages')}>
             <List
               itemLayout="vertical"
               size="small"
               dataSource={recentMessages}
+              locale={{ emptyText: t('dashboard.empty.recentMessages') }}
               renderItem={(item) => (
                 <List.Item
                   actions={[
@@ -266,23 +317,6 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 快捷操作 */}
-      <Card title="快捷操作" style={{ marginTop: '16px' }}>
-        <Space wrap>
-          <Button type="primary" icon={<UserOutlined />}>
-            用户管理
-          </Button>
-          <Button icon={<MessageOutlined />}>
-            消息中心
-          </Button>
-          <Button icon={<TeamOutlined />}>
-            权限管理
-          </Button>
-          <Button icon={<RiseOutlined />}>
-            数据统计
-          </Button>
-        </Space>
-      </Card>
     </>
   );
 };

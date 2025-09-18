@@ -29,6 +29,34 @@ export class FileService implements OnModuleInit {
     } else {
       this.logger.log(`Bucket ${this.bucketName} already exists.`);
     }
+
+    // Ensure public read policy so avatars can be accessed by the browser directly
+    try {
+      const policy = {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetBucketLocation', 's3:ListBucket'],
+            Resource: [`arn:aws:s3:::${this.bucketName}`],
+          },
+          {
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetObject'],
+            Resource: [`arn:aws:s3:::${this.bucketName}/*`],
+          },
+        ],
+      } as const;
+      // Types for minio v8 client are missing setBucketPolicy, but runtime supports it
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      await (this.minioClient as any).setBucketPolicy(this.bucketName, JSON.stringify(policy));
+      this.logger.log(`Public read policy applied to bucket ${this.bucketName}.`);
+    } catch (e) {
+      this.logger.warn(`Failed to set bucket policy: ${String(e)}`);
+    }
   }
 
   async uploadFile(file: Express.Multer.File): Promise<{ url: string }> {
@@ -39,6 +67,9 @@ export class FileService implements OnModuleInit {
       fileName,
       fileStream,
       file.size,
+      {
+        'Content-Type': file.mimetype || 'application/octet-stream',
+      } as any,
     );
     await fs.promises.unlink(file.path);
     return {
@@ -46,6 +77,22 @@ export class FileService implements OnModuleInit {
         'MINIO_EXTERNAL_ENDPOINT',
         'localhost',
       )}:${this.configService.get('MINIO_PORT', '9000')}/${this.bucketName}/${fileName}`,
+    };
+  }
+
+  // 直接上传内存中的二进制数据（用于会话合成头像 SVG）
+  async uploadBuffer(buffer: Buffer, fileName: string, contentType = 'application/octet-stream'): Promise<{ url: string }> {
+    await this.minioClient.putObject(
+      this.bucketName,
+      fileName,
+      buffer,
+      buffer.length,
+      {
+        'Content-Type': contentType,
+      } as any,
+    );
+    return {
+      url: `http://${this.configService.get('MINIO_EXTERNAL_ENDPOINT', 'localhost')}:${this.configService.get('MINIO_PORT', '9000')}/${this.bucketName}/${fileName}`,
     };
   }
 }

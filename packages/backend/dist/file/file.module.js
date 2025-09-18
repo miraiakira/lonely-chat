@@ -19,6 +19,7 @@ exports.FileModule = FileModule = __decorate([
         imports: [platform_express_1.MulterModule.register({ dest: './uploads' })],
         controllers: [file_controller_1.FileController],
         providers: [file_service_1.FileService],
+        exports: [file_service_1.FileService],
     })
 ], FileModule);
 //# sourceMappingURL=file.module.js.map

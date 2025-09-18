@@ -41,31 +41,123 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
-const user_service_1 = require("../user/user.service");
 const jwt_1 = require("@nestjs/jwt");
+const user_service_1 = require("../user/user.service");
 const bcrypt = __importStar(require("bcrypt"));
+const redis_module_1 = require("../redis/redis.module");
+const crypto_1 = require("crypto");
+const menu_service_1 = require("../menu/menu.service");
 let AuthService = class AuthService {
-    userService;
     jwtService;
-    constructor(userService, jwtService) {
-        this.userService = userService;
+    userService;
+    menuService;
+    redis;
+    constructor(jwtService, userService, menuService, redis) {
         this.jwtService = jwtService;
+        this.userService = userService;
+        this.menuService = menuService;
+        this.redis = redis;
     }
-    async validateUser(username, pass) {
+    async validateUser(username, password) {
         const user = await this.userService.findOneByUsername(username);
-        if (user && await bcrypt.compare(pass, user.password)) {
-            const { password, ...result } = user;
-            return result;
-        }
-        return null;
+        if (!user)
+            return null;
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch)
+            return null;
+        const { password: _pwd, ...safeUser } = user;
+        return safeUser;
     }
-    async login(user) {
-        const payload = { username: user.username, sub: user.id, roles: user.roles.map(role => role.name) };
+    buildPayload(user, remember) {
         return {
-            access_token: this.jwtService.sign(payload),
+            username: user.username,
+            sub: user.id,
+            roles: user.roles.map((role) => role.name),
+            remember: Boolean(remember),
+        };
+    }
+    refreshKey(userId, jti) {
+        return `refresh:user:${userId}:${jti}`;
+    }
+    refreshPrefix(userId) {
+        return `refresh:user:${userId}:`;
+    }
+    async issueTokens(user, remember) {
+        const payload = this.buildPayload(user, remember);
+        const access_token = this.jwtService.sign(payload, { expiresIn: '15m' });
+        const jti = (0, crypto_1.randomUUID)();
+        const refresh_token = this.jwtService.sign(payload, { expiresIn: '7d', jwtid: jti });
+        const refreshHash = await bcrypt.hash(refresh_token, 10);
+        const key = this.refreshKey(user.id, jti);
+        await this.redis.set(key, refreshHash, 'EX', 7 * 24 * 60 * 60);
+        return { access_token, refresh_token };
+    }
+    async refresh(user, providedRefreshToken, remember, jti) {
+        if (!jti) {
+            throw new Error('Missing token id');
+        }
+        const key = this.refreshKey(user.id, jti);
+        const storedHash = await this.redis.get(key);
+        if (!storedHash) {
+            throw new Error('No refresh token saved');
+        }
+        const valid = await bcrypt.compare(providedRefreshToken, storedHash);
+        if (!valid) {
+            throw new Error('Invalid refresh token');
+        }
+        const { access_token, refresh_token } = await this.issueTokens(user, remember);
+        try {
+            await this.redis.del(key);
+        }
+        catch { }
+        return { access_token, refresh_token };
+    }
+    async logout(userId, jti) {
+        if (jti) {
+            const key = this.refreshKey(userId, jti);
+            await this.redis.del(key);
+        }
+        else {
+            const prefix = this.refreshPrefix(userId);
+            let cursor = '0';
+            do {
+                const [next, keys] = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 200);
+                cursor = next;
+                if (keys && keys.length) {
+                    await this.redis.del(...keys);
+                }
+            } while (cursor !== '0');
+        }
+        return true;
+    }
+    async login(user, remember) {
+        const { access_token, refresh_token } = await this.issueTokens(user, remember);
+        return { access_token, refresh_token };
+    }
+    async getMe(userId) {
+        const user = await this.userService.findOne(userId);
+        if (!user)
+            return null;
+        const { password, ...safeUser } = user;
+        return safeUser;
+    }
+    mapEntityToItem(entity) {
+        return {
+            id: entity.id,
+            title: entity.title,
+            path: entity.path,
+            icon: entity.icon || undefined,
+            permissions: entity.permissions || undefined,
+            i18nKey: entity.i18nKey || undefined,
+            isExternal: entity.isExternal || undefined,
+            externalUrl: entity.externalUrl || undefined,
+            children: (entity.children || []).map((c) => this.mapEntityToItem(c)),
         };
     }
     async getMenus(userId) {
@@ -73,81 +165,48 @@ let AuthService = class AuthService {
         if (!user) {
             return [];
         }
-        const userPermissions = new Set();
-        user.roles.forEach(role => {
-            role.permissions.forEach(permission => {
-                userPermissions.add(permission.name);
-            });
-        });
-        const allMenus = [
-            {
-                id: 'dashboard',
-                title: '仪表盘',
-                path: '/dashboard',
-                icon: 'DashboardOutlined',
-                permissions: ['dashboard:view']
-            },
-            {
-                id: 'user-management',
-                title: '用户管理',
-                path: '/users',
-                icon: 'UserOutlined',
-                permissions: ['user:read']
-            },
-            {
-                id: 'role-management',
-                title: '角色管理',
-                path: '/roles',
-                icon: 'TeamOutlined',
-                permissions: ['role:read']
-            },
-            {
-                id: 'permission-management',
-                title: '权限管理',
-                path: '/permissions',
-                icon: 'SafetyOutlined',
-                permissions: ['permission:read']
-            },
-            {
-                id: 'system',
-                title: '系统管理',
-                icon: 'SettingOutlined',
-                children: [
-                    {
-                        id: 'system-config',
-                        title: '系统配置',
-                        path: '/system/config',
-                        permissions: ['system:config']
-                    },
-                    {
-                        id: 'system-logs',
-                        title: '系统日志',
-                        path: '/system/logs',
-                        permissions: ['system:logs']
-                    }
-                ]
+        const perms = new Set();
+        for (const role of user.roles ?? []) {
+            for (const p of role.permissions ?? []) {
+                if (p?.name)
+                    perms.add(p.name);
             }
+        }
+        const aliasPairs = [
+            ['manage_users', 'user:manage'],
+            ['manage_roles', 'role:manage'],
+            ['manage_permissions', 'permission:manage'],
         ];
-        const filterMenus = (menus) => {
-            return menus.filter(menu => {
-                if (menu.children) {
-                    menu.children = filterMenus(menu.children);
-                    return menu.children.length > 0;
+        const expanded = new Set(perms);
+        for (const [legacy, modern] of aliasPairs) {
+            if (perms.has(legacy))
+                expanded.add(modern);
+            if (perms.has(modern))
+                expanded.add(legacy);
+        }
+        const trees = await this.menuService.findAll();
+        const filterTree = (nodes) => {
+            const result = [];
+            for (const node of nodes) {
+                const children = filterTree(node.children || []);
+                const required = (node.permissions || []).filter(Boolean);
+                const hasPerm = required.length === 0 || required.some((p) => expanded.has(p));
+                if (hasPerm || children.length > 0) {
+                    result.push({ ...node, children });
                 }
-                if (!menu.permissions || menu.permissions.length === 0) {
-                    return true;
-                }
-                return menu.permissions.some(permission => userPermissions.has(permission));
-            });
+            }
+            return result;
         };
-        const filteredMenus = filterMenus(allMenus);
-        return filteredMenus;
+        const filtered = filterTree(trees);
+        return filtered.map((e) => this.mapEntityToItem(e));
     }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [user_service_1.UserService,
-        jwt_1.JwtService])
+    __param(3, (0, common_1.Inject)(redis_module_1.REDIS_CLIENT)),
+    __metadata("design:paramtypes", [jwt_1.JwtService,
+        user_service_1.UserService,
+        menu_service_1.MenuService, Object])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

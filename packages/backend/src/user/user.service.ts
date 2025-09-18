@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from './user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
@@ -22,20 +22,19 @@ export class UserService {
   ) {}
 
   async findOneByUsername(username: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { username }, relations: ['roles'] });
+    return this.userRepository.findOne({ where: { username }, relations: ['roles', 'roles.permissions', 'profile'] });
   }
-
   async findOne(id: number): Promise<User | null> {
     return this.userRepository.findOne({ where: { id }, relations: ['roles', 'profile'] });
   }
 
-    async findAll(): Promise<User[]> {
+  async findAll(): Promise<User[]> {
     return this.userRepository.find({
       relations: ['roles', 'profile'],
     });
   }
 
-    async remove(id: number): Promise<void> {
+  async remove(id: number): Promise<void> {
     await this.userRepository.delete(id);
   }
 
@@ -66,7 +65,7 @@ export class UserService {
       throw new Error('User not found');
     }
 
-    const roles = await this.roleRepository.findByIds(assignRolesDto.roleIds);
+    const roles = await this.roleRepository.findBy({ id: In(assignRolesDto.roleIds) });
     user.roles = roles;
 
     return this.userRepository.save(user);
@@ -91,5 +90,38 @@ export class UserService {
 
     await this.userProfileRepository.save(profile);
     return this.userRepository.save(user);
+  }
+
+  // 新增：查询最近注册的用户
+  async findRecent(limit = 5): Promise<User[]> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.profile', 'profile')
+      .orderBy('user.createdAt', 'DESC')
+      .take(limit)
+      .getMany();
+  }
+
+  // 新增：保存/清除刷新令牌哈希
+  async setRefreshTokenHash(userId: number, hash: string): Promise<void> {
+    await this.userRepository.update({ id: userId }, { hashedRefreshToken: hash });
+  }
+
+  async clearRefreshTokenHash(userId: number): Promise<void> {
+    await this.userRepository.update({ id: userId }, { hashedRefreshToken: null });
+  }
+
+  // 新增：按用户名或昵称搜索用户（仅返回基础信息）
+  async searchUsers(q: string, limit = 20): Promise<User[]> {
+    const query = (q || '').trim()
+    if (!query) return []
+    return this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.profile', 'profile')
+      .where('user.username ILIKE :q', { q: `%${query}%` })
+      .orWhere('profile.nickname ILIKE :q', { q: `%${query}%` })
+      .orderBy('user.createdAt', 'DESC')
+      .take(Math.max(1, Math.min(50, limit)))
+      .getMany()
   }
 }

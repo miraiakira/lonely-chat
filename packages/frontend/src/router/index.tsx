@@ -5,6 +5,11 @@ import PrivateRoute from './PrivateRoute';
 import UserManagement from '../pages/UserManagement';
 import RoleManagement from '../pages/RoleManagement';
 import MenuManagement from '../pages/System/MenuManagement';
+import PermissionManagement from '../pages/PermissionManagement';
+import ChatMessages from '../pages/Admin/ChatMessages';
+import ChatUsers from '../pages/Admin/ChatUsers';
+import ChatConversations from '../pages/Admin/Conversations';
+import AdminRoute from './AdminRoute';
 
 const router = createBrowserRouter([
   {
@@ -31,8 +36,24 @@ const router = createBrowserRouter([
         element: <RoleManagement />,
       },
       {
+        path: '/permissions',
+        element: <PermissionManagement />,
+      },
+      {
         path: '/system/menus',
         element: <MenuManagement />,
+      },
+      {
+        path: '/admin/messages',
+        element: <AdminRoute><ChatMessages /></AdminRoute>,
+      },
+      {
+        path: '/admin/users',
+        element: <AdminRoute><ChatUsers /></AdminRoute>,
+      },
+      {
+        path: '/admin/conversations',
+        element: <AdminRoute><ChatConversations /></AdminRoute>,
       },
     ],
   },

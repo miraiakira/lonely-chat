@@ -8,5 +8,8 @@ export declare class User {
     createdAt: Date;
     updatedAt: Date;
     profile: UserProfile;
+    hashedRefreshToken: string | null;
+    mutedUntil: Date | null;
+    bannedUntil: Date | null;
     hashPassword(): Promise<void>;
 }

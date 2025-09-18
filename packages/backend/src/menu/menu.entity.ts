@@ -10,16 +10,31 @@ export class Menu {
   title: string;
 
   @Column({ nullable: true })
+  i18nKey: string;
+
+  @Column({ nullable: true })
   icon: string;
 
   @Column()
   path: string;
 
-  @Column()
+  @Column({ nullable: true })
   component: string;
 
   @Column({ default: 0 })
   order: number;
+
+  @Column('simple-array', { nullable: true })
+  permissions: string[];
+
+  @Column({ default: false })
+  isExternal: boolean;
+
+  @Column({ nullable: true })
+  externalUrl: string;
+
+  @Column({ default: false })
+  hidden: boolean;
 
   @TreeChildren()
   children: Menu[];

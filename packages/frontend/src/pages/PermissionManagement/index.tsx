@@ -1,17 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, message } from 'antd';
-import { getPermissions, createPermission } from '../../services/api';
+import { Table, App as AntdApp, Tag } from 'antd';
+import { getPermissions } from '../../services/api';
 import type { Permission } from '../../types';
+
+// 历史权限标识（禁止创建，显示标记）
+const LEGACY_PATTERNS = ['manage_users', 'manage_roles', 'manage_permissions'];
+
+const isLegacyPermission = (name: string): boolean => {
+  return LEGACY_PATTERNS.includes(name) || name.startsWith('manage_');
+};
 
 const PermissionManagement: React.FC = () => {
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [form] = Form.useForm();
+  const { message } = AntdApp.useApp();
 
   const fetchPermissions = async () => {
     try {
-      const { data } = await getPermissions();
-      setPermissions(data);
+      const list = await getPermissions();
+      // 过滤掉历史命名的权限，保证列表展示统一为现代命名（如 user:manage）
+      setPermissions((list as Permission[]).filter((p: Permission) => !isLegacyPermission(p.name)));
     } catch (error) {
       message.error('Failed to fetch permissions');
     }
@@ -21,60 +28,27 @@ const PermissionManagement: React.FC = () => {
     fetchPermissions();
   }, []);
 
-  const handleOk = async () => {
-    try {
-      const values = await form.validateFields();
-      await createPermission(values);
-      message.success('Permission created successfully');
-      setIsModalVisible(false);
-      fetchPermissions();
-    } catch (error) {
-      message.error('Failed to create permission');
-    }
-  };
-
   const columns = [
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-    },
-    {
-      title: 'Description',
-      dataIndex: 'description',
-      key: 'description',
+      render: (name: string) => (
+        <span>
+          {name}
+          {isLegacyPermission(name) && (
+            <Tag color="orange" style={{ marginLeft: 8 }}>
+              Legacy
+            </Tag>
+          )}
+        </span>
+      ),
     },
   ];
 
   return (
     <div>
-      <Button type="primary" onClick={() => setIsModalVisible(true)} style={{ marginBottom: 16 }}>
-        Create Permission
-      </Button>
       <Table dataSource={permissions} columns={columns} rowKey="id" />
-      <Modal
-        title="Create Permission"
-        visible={isModalVisible}
-        onOk={handleOk}
-        onCancel={() => setIsModalVisible(false)}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="name"
-            label="Name"
-            rules={[{ required: true, message: 'Please input the permission name!' }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="description"
-            label="Description"
-            rules={[{ required: true, message: 'Please input the permission description!' }]}
-          >
-            <Input />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 };

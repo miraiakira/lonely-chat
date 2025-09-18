@@ -14,11 +14,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { AuthController } from './auth.controller';
+import { MenuModule } from '../menu/menu.module';
 
 @Module({
-    imports: [
+  imports: [
     TypeOrmModule.forFeature([Role, Permission]),
     forwardRef(() => UserModule),
+    MenuModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -31,6 +33,6 @@ import { AuthController } from './auth.controller';
   ],
   controllers: [RoleController, AuthController, PermissionController],
   providers: [RoleService, AuthService, JwtStrategy, LocalStrategy, PermissionService],
-  exports: [TypeOrmModule, AuthService, RoleService, PermissionService],
+  exports: [TypeOrmModule, AuthService, RoleService, PermissionService, JwtModule],
 })
 export class AuthModule {}

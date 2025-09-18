@@ -12,6 +12,8 @@ export class RolesGuard implements CanActivate {
     }
     const request = context.switchToHttp().getRequest();
     const user = request.user;
-    return roles.some((role) => user.roles?.includes(role));
+    // 支持两种形态：['admin'] 或 [{ name: 'admin' }]
+    const userRoleNames: string[] = (user?.roles || []).map((r: any) => (typeof r === 'string' ? r : r?.name)).filter(Boolean);
+    return roles.some((role) => userRoleNames.includes(role));
   }
 }
