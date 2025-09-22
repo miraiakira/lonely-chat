@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Monogram C in a speech bubble negative space -->
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-labelledby="title desc">
+  <title id="title">Lonely Chat Logo C</title>
+  <desc id="desc">Circular gradient badge with negative-space C bubble</desc>
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <circle cx="24" cy="24" r="18" fill="url(#g1)"/>
+    <!-- negative space C bubble -->
+    <path fill="#fff" d="M32 19.5a8.5 8.5 0 1 0 0 9H30A6.5 6.5 0 1 1 30 21h2z"/>
+    <!-- subtle tail cut -->
+    <path fill="#fff" d="M18 33 l-4 6 8-5z" opacity="0.85"/>
+  </g>
+</svg>

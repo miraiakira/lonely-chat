@@ -17,6 +17,7 @@ import { ChatModule } from './chat/chat.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { FriendModule } from './friend/friend.module';
 import { PostsModule } from './posts/posts.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { PostsModule } from './posts/posts.module';
     RealtimeModule,
     FriendModule,
     PostsModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
