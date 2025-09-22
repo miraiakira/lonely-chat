@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { PostEntity } from './entities/post.entity'
@@ -7,6 +7,7 @@ import { User } from '../user/user.entity'
 import { PostLike } from './entities/post-like.entity'
 import { PostComment } from './entities/post-comment.entity'
 import { CreateCommentDto } from './dto/create-comment.dto'
+import { SearchService } from '../search/search.service'
 
 @Injectable()
 export class PostsService {
@@ -15,6 +16,7 @@ export class PostsService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(PostLike) private readonly likeRepo: Repository<PostLike>,
     @InjectRepository(PostComment) private readonly commentRepo: Repository<PostComment>,
+    @Inject(forwardRef(() => SearchService)) private readonly searchService: SearchService,
   ) {}
 
   async list(limit = 50, offset = 0, currentUserId?: number) {
@@ -84,6 +86,70 @@ export class PostsService {
     }
   }
 
+  // 基于数据库的帖子搜索（用于 ES 故障降级）
+  async searchPostsByContent(q: string, limit = 20, offset = 0): Promise<{ total: number; items: any[]; from: number }> {
+    const query = (q || '').trim()
+    if (!query) return { total: 0, items: [], from: 0 }
+
+    const take = Math.max(1, Math.min(50, Number(limit) || 20))
+    const skip = Math.max(0, Number(offset) || 0)
+
+    const qb = this.postRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.author', 'author')
+      .leftJoinAndSelect('author.profile', 'profile')
+      .where('p.content ILIKE :q', { q: `%${query}%` })
+      .orderBy('p.createdAt', 'DESC')
+      .take(take)
+      .skip(skip)
+
+    const [items, total] = await qb.getManyAndCount()
+
+    // 统计点赞数与评论数
+    const postIds = items.map((p) => p.id)
+
+    const likeCounts: Record<number, number> = {}
+    if (postIds.length > 0) {
+      const rows = await this.likeRepo
+        .createQueryBuilder('l')
+        .select('l.postId', 'postId')
+        .addSelect('COUNT(1)', 'cnt')
+        .where('l.postId IN (:...ids)', { ids: postIds })
+        .groupBy('l.postId')
+        .getRawMany<{ postId: number; cnt: string }>()
+      for (const r of rows) likeCounts[r.postId] = Number(r.cnt)
+    }
+
+    const commentCounts: Record<number, number> = {}
+    if (postIds.length > 0) {
+      const rows = await this.commentRepo
+        .createQueryBuilder('c')
+        .select('c.postId', 'postId')
+        .addSelect('COUNT(1)', 'cnt')
+        .where('c.postId IN (:...ids)', { ids: postIds })
+        .groupBy('c.postId')
+        .getRawMany<{ postId: number; cnt: string }>()
+      for (const r of rows) commentCounts[r.postId] = Number(r.cnt)
+    }
+
+    return {
+      total,
+      from: skip,
+      items: items.map((p) => ({
+        id: String(p.id),
+        authorId: String(p.author?.id),
+        authorName: (p as any)?.author?.profile?.nickname || p.author?.username,
+        authorAvatar: (p as any)?.author?.profile?.avatar || null,
+        content: p.content,
+        images: p.images || null,
+        createdAt: p.createdAt.getTime(),
+        likeCount: likeCounts[p.id] || 0,
+        likedByMe: false,
+        commentCount: commentCounts[p.id] || 0,
+      })),
+    }
+  }
+
   async create(authorId: number, dto: CreatePostDto) {
     const author = await this.userRepo.findOne({ where: { id: authorId }, relations: ['profile'] })
     if (!author) throw new NotFoundException('Author not found')
@@ -93,6 +159,17 @@ export class PostsService {
       images: (dto.images && dto.images.length > 0) ? dto.images : null,
     })
     const saved = await this.postRepo.save(entity)
+    // 异步：索引到 ES
+    this.searchService.indexPostDocument({
+      id: saved.id,
+      content: saved.content,
+      authorId: author.id,
+      authorUsername: (author as any)?.profile?.nickname || author.username,
+      images: saved.images || null,
+      likesCount: 0,
+      commentsCount: 0,
+      createdAt: saved.createdAt.getTime(),
+    }).catch(() => void 0)
     return {
       id: String(saved.id),
       authorId: String(author.id),
@@ -114,6 +191,13 @@ export class PostsService {
     if (existing) return { ok: true }
     const like = this.likeRepo.create({ user, post })
     await this.likeRepo.save(like)
+    // 重新统计点赞数并更新 ES
+    const [{ cnt }] = await this.likeRepo
+      .createQueryBuilder('l')
+      .select('COUNT(1)', 'cnt')
+      .where('l.postId = :pid', { pid: post.id })
+      .getRawMany<{ cnt: string }>()
+    this.searchService.updatePostCounts(post.id, Number(cnt), undefined).catch(() => void 0)
     return { ok: true }
   }
 
@@ -125,6 +209,13 @@ export class PostsService {
       .delete()
       .where('userId = :uid AND postId = :pid', { uid: userId, pid: postId })
       .execute()
+    // 重新统计点赞数并更新 ES
+    const [{ cnt }] = await this.likeRepo
+      .createQueryBuilder('l')
+      .select('COUNT(1)', 'cnt')
+      .where('l.postId = :pid', { pid: postId })
+      .getRawMany<{ cnt: string }>()
+    this.searchService.updatePostCounts(postId, Number(cnt), undefined).catch(() => void 0)
     return { ok: true }
   }
 
@@ -134,6 +225,13 @@ export class PostsService {
     if (!author || !post) throw new NotFoundException('Not found')
     const c = this.commentRepo.create({ author, post, content: dto.content })
     const saved = await this.commentRepo.save(c)
+    // 重新统计评论数并更新 ES
+    const [{ cnt }] = await this.commentRepo
+      .createQueryBuilder('c')
+      .select('COUNT(1)', 'cnt')
+      .where('c.postId = :pid', { pid: postId })
+      .getRawMany<{ cnt: string }>()
+    this.searchService.updatePostCounts(postId, undefined, Number(cnt)).catch(() => void 0)
     return {
       id: String(saved.id),
       postId: String(post.id),
@@ -182,6 +280,58 @@ export class PostsService {
     if (!isOwner && !isAdmin) throw new ForbiddenException('No permission')
 
     await this.postRepo.delete({ id: postId })
+    // 删除 ES 索引文档
+    this.searchService.removePostIndex(postId).catch(() => void 0)
     return { ok: true }
+  }
+  // 提供给搜索重建：获取所有帖子 ID（避免暴露仓库）
+  async getAllIdsForIndexing(): Promise<number[]> {
+    const rows = await this.postRepo
+      .createQueryBuilder('p')
+      .select('p.id', 'id')
+      .orderBy('p.id', 'ASC')
+      .getRawMany<{ id: number }>()
+    return rows.map((r) => Number(r.id))
+  }
+  // 根据 ID 获取用于索引的帖子摘要
+  async getSummarizedPostById(postId: number): Promise<{
+    id: number
+    authorId: number
+    authorName: string
+    content: string
+    images: string[] | null
+    likeCount: number
+    commentCount: number
+    createdAt: number
+  } | null> {
+    const p = await this.postRepo.findOne({
+      where: { id: postId },
+      relations: ['author', 'author.profile'],
+    })
+    if (!p) return null
+
+    const [likeRow, commentRow] = await Promise.all([
+      this.likeRepo
+        .createQueryBuilder('l')
+        .select('COUNT(1)', 'cnt')
+        .where('l.postId = :pid', { pid: postId })
+        .getRawOne<{ cnt: string }>(),
+      this.commentRepo
+        .createQueryBuilder('c')
+        .select('COUNT(1)', 'cnt')
+        .where('c.postId = :pid', { pid: postId })
+        .getRawOne<{ cnt: string }>(),
+    ])
+
+    return {
+      id: p.id,
+      authorId: p.author?.id || 0,
+      authorName: (p as any)?.author?.profile?.nickname || p.author?.username || '',
+      content: p.content || '',
+      images: p.images || null,
+      likeCount: Number(likeRow?.cnt || 0),
+      commentCount: Number(commentRow?.cnt || 0),
+      createdAt: p.createdAt?.getTime?.() || Date.now(),
+    }
   }
 }

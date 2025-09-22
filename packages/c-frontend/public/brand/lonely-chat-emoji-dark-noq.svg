@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-labelledby="title desc">
+  <title id="title">Lonely Chat Emoji (Dark, No Question)</title>
+  <desc id="desc">Cute emoji chat bubble (dark), without question mark</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.10"/>
+    </radialGradient>
+  </defs>
+
+  <!-- soft badge -->
+  <circle cx="24" cy="24" r="18" fill="url(#bg)"/>
+
+  <!-- Bubble base -->
+  <g>
+    <circle cx="23" cy="22" r="14" fill="#F59E0B" stroke="#FBBF24" stroke-width="2"/>
+    <!-- Tail -->
+    <path d="M14.6 30.2 L12.5 36.5 L18.2 31.6" fill="#F59E0B" stroke="#FBBF24" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Face -->
+  <g>
+    <!-- eyes -->
+    <circle cx="18" cy="20" r="1.6" fill="#111827"/>
+    <circle cx="28" cy="20" r="1.6" fill="#111827"/>
+    <!-- mouth -->
+    <path d="M18 25 C 20 27.5, 26 27.5, 28 25" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round"/>
+    <!-- blush -->
+    <circle cx="15.2" cy="22.8" r="1.1" fill="#FCA5A5" opacity="0.85"/>
+    <circle cx="30.8" cy="22.8" r="1.1" fill="#FCA5A5" opacity="0.85"/>
+  </g>
+</svg>

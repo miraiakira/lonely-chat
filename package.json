@@ -13,7 +13,9 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "start": "turbo run start"
+    "start": "turbo run start",
+    "backend:dev:pinyin": "SEARCH_USE_PINYIN=true turbo run dev --filter=backend",
+    "backend:recreate-pinyin": "sh -c 'BASE=\"${BACKEND_BASE}\"; [ -n \"$BASE\" ] || BASE=\"http://localhost:3030\"; URL=\"$BASE/api/search/recreate\"; echo \"POST  $URL\"; curl -sS -X POST \"$URL\" -H \"Content-Type: application/json\" && echo \"\"'"
   },
   "dependencies": {
     "accepts": "^2.0.0",
@@ -48,7 +50,6 @@
     "bcrypt": "^6.0.0",
     "bl": "^4.1.0",
     "body-parser": "^2.2.0",
-    "brace-expansion": "^1.1.12",
     "braces": "^3.0.3",
     "browserslist": "^4.25.1",
     "bs-logger": "^0.2.6",
@@ -99,7 +100,6 @@
     "core-util-is": "^1.0.3",
     "cors": "^2.8.5",
     "cosmiconfig": "^8.3.6",
-    "create-require": "^1.1.1",
     "cross-spawn": "^7.0.6",
     "dayjs": "^1.11.13",
     "debug": "^4.4.1",
@@ -200,7 +200,6 @@
     "has-tostringtag": "^1.0.2",
     "hasown": "^2.0.2",
     "html-escaper": "^2.0.2",
-    "http-errors": "^2.0.0",
     "human-signals": "^2.1.0",
     "iconv-lite": "^0.6.3",
     "ieee754": "^1.2.1",
@@ -248,7 +247,6 @@
     "jest-mock": "^30.0.5",
     "jest-pnp-resolver": "^1.2.3",
     "jest-regex-util": "^30.0.1",
-    "jest-resolve": "^30.0.5",
     "jest-resolve-dependencies": "^30.0.5",
     "jest-runner": "^30.0.5",
     "jest-runtime": "^30.0.5",

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -9,6 +9,7 @@ import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { Role } from '../auth/entities/role.entity';
 import { UserProfile } from './user-profile.entity';
 import { AssignRolesDto } from './dto/assign-roles.dto';
+import { SearchService } from '../search/search.service';
 
 @Injectable()
 export class UserService {
@@ -19,6 +20,8 @@ export class UserService {
     private readonly roleRepository: Repository<Role>,
     @InjectRepository(UserProfile)
     private readonly userProfileRepository: Repository<UserProfile>,
+    @Inject(forwardRef(() => SearchService))
+    private readonly searchService: SearchService,
   ) {}
 
   async findOneByUsername(username: string): Promise<User | null> {
@@ -36,6 +39,8 @@ export class UserService {
 
   async remove(id: number): Promise<void> {
     await this.userRepository.delete(id);
+    // 同步删除 ES 用户文档
+    this.searchService.removeUserIndex(id).catch(() => void 0)
   }
 
   async update(id: number, updateUserDto: UpdateUserDto, updateUserProfileDto: UpdateUserProfileDto): Promise<User> {
@@ -56,7 +61,10 @@ export class UserService {
       await this.userProfileRepository.save(user.profile);
     }
 
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    // 同步更新 ES 用户文档
+    this.searchService.indexUser(saved.id).catch(() => void 0)
+    return saved;
   }
 
   async assignRoles(id: number, assignRolesDto: AssignRolesDto): Promise<User> {
@@ -89,7 +97,10 @@ export class UserService {
     }
 
     await this.userProfileRepository.save(profile);
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    // 同步新增 ES 用户文档
+    this.searchService.indexUser(saved.id).catch(() => void 0)
+    return saved;
   }
 
   // 新增：查询最近注册的用户
