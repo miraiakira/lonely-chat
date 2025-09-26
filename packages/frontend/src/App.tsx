@@ -22,6 +22,7 @@ function App() {
       { path: '/admin/messages', title: '聊天消息' },
       { path: '/admin/users', title: '聊天用户' },
       { path: '/admin/conversations', title: '聊天会话' },
+      { path: '/admin/posts', title: '动态管理' },
     ];
 
     const missing = needed.filter((n) => !exists(n.path));

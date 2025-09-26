@@ -176,3 +176,16 @@ a[data-slot="button"] {
 /* Contrast helpers for Button (applies when needed, no visual change by default) */
 [data-slot="button"].on-dark { color: var(--primary-foreground); }
 [data-slot="button"].on-light { color: var(--foreground); }
+
+/* Search highlight container: ensures inner <em> or strong has visible styles */
+.search-highlight em,
+.search-highlight strong {
+  background-color: rgba(250, 204, 21, 0.35); /* amber-300/35 */
+  color: inherit;
+  font-weight: 600; /* semi-bold like <strong> */
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* fallback: if backend没返回<em>，但我们仍包了容器，不要影响布局 */
+.search-highlight { display: inline; }

@@ -3,6 +3,7 @@ import { ElasticsearchService } from '@nestjs/elasticsearch'
 import { PostsService } from '../posts/posts.service'
 import { UserService } from '../user/user.service'
 import { ConfigService } from '@nestjs/config'
+import { ModuleMetaService } from '../module-meta/module-meta.service'
 
 // 帖子索引映射定义，支持中文分词
 const POSTS_INDEX_MAPPING = {
@@ -101,6 +102,7 @@ export class SearchService implements OnModuleInit {
   private readonly logger = new Logger(SearchService.name)
   public static readonly POSTS_INDEX = 'posts'
   public static readonly USERS_INDEX = 'users'
+  public static readonly MODULES_INDEX = 'modules'
 
   constructor(
     private readonly es: ElasticsearchService,
@@ -108,6 +110,8 @@ export class SearchService implements OnModuleInit {
     private readonly postsService: PostsService,
     @Inject(forwardRef(() => UserService))
     private readonly userService: UserService,
+    @Inject(forwardRef(() => ModuleMetaService))
+    private readonly moduleMetaService: ModuleMetaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -147,6 +151,16 @@ export class SearchService implements OnModuleInit {
     if (v === 'true') return true
     if (v === 'false') return false
     return this.ikAvailable
+  }
+
+  // 新增：粗略判断查询是否为纯英文/ASCII，以便禁用 pinyin 字段
+  private isEnglishQuery(q: string): boolean {
+    const s = (q || '').trim()
+    if (!s) return false
+    for (let i = 0; i < s.length; i++) {
+      if (s.charCodeAt(i) > 127) return false
+    }
+    return true
   }
 
   async onModuleInit() {
@@ -220,8 +234,10 @@ export class SearchService implements OnModuleInit {
   async initializeIndices(): Promise<void> {
     const postsMapping = this.buildPostsIndexMapping()
     const usersMapping = this.buildUsersIndexMapping()
+    const modulesMapping = this.buildModulesIndexMapping()
     await this.initIndex(SearchService.POSTS_INDEX, postsMapping)
     await this.initIndex(SearchService.USERS_INDEX, usersMapping)
+    await this.initIndex(SearchService.MODULES_INDEX, modulesMapping)
   }
 
   // 对外：搜索帖子（优先 ES，降级 DB）
@@ -234,21 +250,20 @@ export class SearchService implements OnModuleInit {
       return this.searchPostsDB(query, limit, offset)
     }
     try {
-      const usePinyin = this.isPinyinEnabled()
+      const usePinyin = this.isPinyinEnabled() && !this.isEnglishQuery(query)
       const fields = usePinyin
         ? ['content^2', 'content.pinyin^2', 'authorUsername', 'authorUsername.pinyin']
         : ['content^2', 'authorUsername']
+      const tokens = query.split(/\s+/).filter(Boolean)
+      const multiMatchQuery: any = { query, fields, type: 'best_fields' }
+      if (tokens.length >= 2) multiMatchQuery.minimum_should_match = '75%'
       const res: any = await this.es.search({
         index: SearchService.POSTS_INDEX,
         from: Math.max(0, Number(offset) || 0),
         size: Math.max(1, Math.min(50, Number(limit) || 20)),
         track_total_hits: true,
         query: {
-          multi_match: {
-            query,
-            fields,
-            type: 'best_fields',
-          },
+          multi_match: multiMatchQuery,
         },
         sort: [{ createdAt: { order: 'desc' } }],
         highlight: {
@@ -285,10 +300,8 @@ export class SearchService implements OnModuleInit {
           likesCount: Number(h._source?.likesCount || 0),
           commentsCount: Number(h._source?.commentsCount || 0),
           createdAt: Number(h._source?.createdAt || 0),
-          highlight: {
-            content: h?.highlight?.content?.[0],
-            authorUsername: h?.highlight?.authorUsername?.[0],
-          },
+          contentHighlight: h?.highlight?.content?.[0],
+          authorUsernameHighlight: h?.highlight?.authorUsername?.[0],
         })),
       }
     } catch (e) {
@@ -319,17 +332,16 @@ export class SearchService implements OnModuleInit {
       const fields = usePinyin
         ? ['username^2', 'username.pinyin^2', 'nickname', 'nickname.pinyin']
         : ['username^2', 'nickname']
+      const tokens = query.split(/\s+/).filter(Boolean)
+      const multiMatchQuery: any = { query, fields, type: 'best_fields' }
+      if (tokens.length >= 2) multiMatchQuery.minimum_should_match = '75%'
       const res: any = await this.es.search({
         index: SearchService.USERS_INDEX,
         from: Math.max(0, Number(offset) || 0),
         size: Math.max(1, Math.min(50, Number(limit) || 20)),
         track_total_hits: true,
         query: {
-          multi_match: {
-            query,
-            fields,
-            type: 'best_fields',
-          },
+          multi_match: multiMatchQuery,
         },
         sort: [{ createdAt: { order: 'desc' } }],
         highlight: {
@@ -349,18 +361,16 @@ export class SearchService implements OnModuleInit {
         total: body?.hits?.total?.value ?? hits.length,
         from: body?.hits?.from ?? 0,
         items: hits.map((h: any) => {
-          const highlights: Record<string, string> = {}
           const uh = h?.highlight?.username?.[0]
           const nh = h?.highlight?.nickname?.[0]
-          if (uh) highlights.username = uh
-          if (nh) highlights.nickname = nh
           return {
             id: String(h._source.id),
             username: h._source.username,
             nickname: h._source.nickname,
             avatar: h._source.avatar,
             createdAt: h._source.createdAt,
-            highlight: highlights,
+            usernameHighlight: uh,
+            nicknameHighlight: nh,
           }
         }),
       }
@@ -510,12 +520,13 @@ export class SearchService implements OnModuleInit {
     }
   }
 
-  // 全量重建索引（posts & users）。注意：这是耗时操作，建议后台任务化
-  async rebuildAllIndices(): Promise<{ posts: number; users: number }> {
+  // 全量重建索引（posts & users & modules）。注意：这是耗时操作，建议后台任务化
+  async rebuildAllIndices(): Promise<{ posts: number; users: number; modules: number }> {
     await this.initializeIndices()
 
     let postsIndexed = 0
     let usersIndexed = 0
+    let modulesIndexed = 0
 
     // Posts bulk
     try {
@@ -581,13 +592,43 @@ export class SearchService implements OnModuleInit {
       this.logger.warn(`bulk index users error: ${String((e as any)?.message || e)}`)
     }
 
-    return { posts: postsIndexed, users: usersIndexed }
+    // Modules bulk
+    try {
+      const allModules = await this.moduleMetaService.getAllForIndexing()
+      const batches = this.chunkArray(allModules, 500)
+      for (const batch of batches) {
+        const operations: any[] = []
+        for (const m of batch) {
+          const createdAt = (m as any)?.createdAt?.getTime?.() || new Date((m as any).createdAt as any).getTime?.() || Date.now()
+          operations.push({ index: { _index: SearchService.MODULES_INDEX, _id: String((m as any).id) } })
+          operations.push({
+            id: Number((m as any).id),
+            code: String((m as any).code || ''),
+            name: String((m as any).name || ''),
+            description: (m as any).description || '',
+            status: String((m as any).status || ''),
+            version: (m as any).version || null,
+            ownerRoles: (m as any).ownerRoles || null,
+            createdAt: Number(createdAt),
+          })
+        }
+        if (operations.length > 0) {
+          const res: any = await this.es.bulk({ operations, refresh: true })
+          const items = res?.body?.items || []
+          modulesIndexed += items.filter((it: any) => it?.index?.status >= 200 && it?.index?.status < 300).length
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`bulk index modules error: ${String((e as any)?.message || e)}`)
+    }
+
+    return { posts: postsIndexed, users: usersIndexed, modules: modulesIndexed }
   }
 
   // 便捷：删除并重建全部索引（用于更新 analyzer/mapping 后的一键重建）
-  async recreateAllIndices(): Promise<{ posts: number; users: number }> {
+  async recreateAllIndices(): Promise<{ posts: number; users: number; modules: number }> {
     // 尝试删除，忽略不存在错误
-    for (const idx of [SearchService.POSTS_INDEX, SearchService.USERS_INDEX]) {
+    for (const idx of [SearchService.POSTS_INDEX, SearchService.USERS_INDEX, SearchService.MODULES_INDEX]) {
       try {
         await this.deleteIndex(idx)
       } catch (e) {
@@ -777,6 +818,153 @@ export class SearchService implements OnModuleInit {
             },
           },
           avatar: { type: 'keyword' },
+          createdAt: { type: 'date' },
+        },
+      },
+    }
+  }
+
+  // 对外：搜索模块（ModuleMeta）（优先 ES）
+  async searchModules(q: string, limit = 20, offset = 0): Promise<{ total: number; items: any[]; from: number }>
+  {
+    const query = (q || '').trim()
+    if (!query) return { total: 0, items: [], from: 0 }
+    try {
+      const usePinyin = this.isPinyinEnabled()
+      const fields = usePinyin
+        ? ['name^3', 'name.pinyin^3', 'description^1', 'description.pinyin^1', 'code^2', 'code.pinyin^2']
+        : ['name^3', 'description^1', 'code^2']
+      const tokens = query.split(/\s+/).filter(Boolean)
+      const multiMatchQuery: any = { query, fields, type: 'best_fields' }
+      if (tokens.length >= 2) multiMatchQuery.minimum_should_match = '75%'
+      const res: any = await this.es.search({
+        index: SearchService.MODULES_INDEX,
+        from: Math.max(0, Number(offset) || 0),
+        size: Math.max(1, Math.min(50, Number(limit) || 20)),
+        track_total_hits: true,
+        query: {
+          multi_match: {
+            query,
+            fields,
+            type: 'best_fields',
+          },
+        },
+        sort: [{ createdAt: { order: 'desc' } }],
+        highlight: {
+          pre_tags: ['<em>'],
+          post_tags: ['</em>'],
+          fields: { name: {}, description: {}, code: {} },
+          number_of_fragments: 1,
+          fragment_size: 80,
+        },
+      })
+      const body = (res as any)?.body ?? res
+      const hits = body?.hits?.hits || []
+      return {
+        total: body?.hits?.total?.value ?? hits.length,
+        from: body?.hits?.from ?? 0,
+        items: hits.map((h: any) => {
+          const nh = h?.highlight?.name?.[0]
+          const dh = h?.highlight?.description?.[0]
+          const ch = h?.highlight?.code?.[0]
+          return {
+            id: Number(h._source.id),
+            code: h._source.code,
+            name: h._source.name,
+            description: h._source.description,
+            status: h._source.status,
+            version: h._source.version,
+            ownerRoles: h._source.ownerRoles,
+            createdAt: h._source.createdAt,
+            nameHighlight: nh,
+            descriptionHighlight: dh,
+            codeHighlight: ch,
+          }
+        }),
+      }
+    } catch (e) {
+      this.logger.error('Elasticsearch searchModules failed', e as any)
+      return { total: 0, items: [], from: 0 }
+    }
+  }
+
+  // 索引单个模块（新增/更新）
+  async indexModule(moduleId: number): Promise<void> {
+    try {
+      const m = await this.moduleMetaService.findOne(moduleId)
+      if (!m) return
+      const createdAt = (m as any)?.createdAt?.getTime?.() || Date.now()
+      await this.es.index({
+        index: SearchService.MODULES_INDEX,
+        id: String(m.id),
+        document: {
+          id: Number((m as any).id),
+          code: String((m as any).code || ''),
+          name: String((m as any).name || ''),
+          description: (m as any).description || '',
+          status: String((m as any).status || ''),
+          version: (m as any).version || null,
+          ownerRoles: (m as any).ownerRoles || null,
+          createdAt: Number(createdAt),
+        },
+        refresh: true,
+      })
+    } catch (e) {
+      this.logger.error(`indexModule failed for ${moduleId}`, e as any)
+    }
+  }
+
+  async removeModuleIndex(moduleId: number): Promise<void> {
+    try {
+      await this.es.delete({ index: SearchService.MODULES_INDEX, id: String(moduleId) })
+    } catch (e) {
+      if ((e as any)?.body?.result !== 'not_found') {
+        this.logger.error(`Failed to remove module index ${moduleId}`, e as any)
+      }
+    }
+  }
+
+  private buildModulesIndexMapping() {
+    const useIK = this.isIkEnabled()
+    const usePinyin = this.isPinyinEnabled()
+    const settings = this.buildCommonAnalysis()
+    const analyzerIndex = useIK ? 'zh_index' : 'zh_en_index'
+    const analyzerSearch = useIK ? 'zh_search' : 'zh_en_search'
+    return {
+      settings,
+      mappings: {
+        properties: {
+          id: { type: 'long' },
+          code: {
+            type: 'text',
+            analyzer: analyzerIndex,
+            search_analyzer: analyzerSearch,
+            fields: {
+              keyword: { type: 'keyword' },
+              ...(usePinyin ? { pinyin: { type: 'text', analyzer: 'pinyin_analyzer', search_analyzer: 'pinyin_analyzer' } } : {}),
+            },
+          },
+          name: {
+            type: 'text',
+            analyzer: analyzerIndex,
+            search_analyzer: analyzerSearch,
+            fields: {
+              keyword: { type: 'keyword' },
+              ...(usePinyin ? { pinyin: { type: 'text', analyzer: 'pinyin_analyzer', search_analyzer: 'pinyin_analyzer' } } : {}),
+            },
+          },
+          description: {
+            type: 'text',
+            analyzer: analyzerIndex,
+            search_analyzer: analyzerSearch,
+            fields: {
+              keyword: { type: 'keyword' },
+              ...(usePinyin ? { pinyin: { type: 'text', analyzer: 'pinyin_analyzer', search_analyzer: 'pinyin_analyzer' } } : {}),
+            },
+          },
+          status: { type: 'keyword' },
+          version: { type: 'keyword' },
+          ownerRoles: { type: 'keyword' },
           createdAt: { type: 'date' },
         },
       },

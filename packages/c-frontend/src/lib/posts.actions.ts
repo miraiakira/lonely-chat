@@ -17,10 +17,26 @@ export async function deletePost(id: string) {
 
 export async function listComments(id: string, { limit = 50, offset = 0 } = {}) {
   const res = await apiClient.get(`/posts/${id}/comments`, { params: { limit, offset } })
-  return res.data as { total: number, items: Array<{ id: string, postId: string, authorId: string, authorName?: string, authorAvatar?: string | null, content: string, createdAt: number }> }
+  return res.data as { total: number, items: Array<{ id: string, postId: string, authorId: string, authorName?: string, authorAvatar?: string | null, content: string, createdAt: number, parentCommentId?: string, parentAuthorId?: string, parentAuthorName?: string }> }
 }
 
-export async function addComment(id: string, content: string) {
-  const res = await apiClient.post(`/posts/${id}/comments`, { content })
+export async function addComment(id: string, content: string, parentCommentId?: string | number) {
+  const payload: any = { content }
+  // 后端要求整数且 >= 1，这里做健壮性转换与校验
+  if (parentCommentId !== undefined && parentCommentId !== null) {
+    let pid: number | null = null
+    if (typeof parentCommentId === 'number' && Number.isInteger(parentCommentId)) {
+      pid = parentCommentId
+    } else if (typeof parentCommentId === 'string') {
+      const trimmed = parentCommentId.trim()
+      if (/^\d+$/.test(trimmed)) {
+        pid = parseInt(trimmed, 10)
+      }
+    }
+    if (typeof pid === 'number' && pid >= 1) {
+      payload.parentCommentId = pid
+    }
+  }
+  const res = await apiClient.post(`/posts/${id}/comments`, payload)
   return res.data
 }

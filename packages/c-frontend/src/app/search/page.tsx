@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
 import { searchPosts, type PostSearchItem } from "@/lib/search.api"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 
 export default function SearchPage() {
   const [q, setQ] = useState("")
@@ -33,7 +33,7 @@ export default function SearchPage() {
 
   const renderHighlight = (html?: string, fallback?: string) => {
     const __html = html || fallback || ""
-    return <span dangerouslySetInnerHTML={{ __html }} />
+    return <span className="search-highlight" dangerouslySetInnerHTML={{ __html }} />
   }
 
   const formatTime = (ts: number | string) => {
@@ -52,7 +52,15 @@ export default function SearchPage() {
       <div className="mx-auto w-full max-w-3xl">
         <div className="flex gap-2">
           <Input placeholder="搜索动态关键词..." value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') onSearch() }} />
-          <Button onClick={onSearch} disabled={!canSearch || loading}>{loading ? '搜索中...' : '搜索'}</Button>
+          <Button 
+            onClick={onSearch} 
+            disabled={!canSearch || loading}
+            className="w-[80px]"
+          >
+            {loading ? (
+              <Spinner className="h-4 w-4" />
+            ) : '搜索'}
+          </Button>
         </div>
 
         <div className="mt-4 text-sm text-muted-foreground">共 {total} 条结果</div>

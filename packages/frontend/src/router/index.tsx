@@ -10,6 +10,7 @@ import ChatMessages from '../pages/Admin/ChatMessages';
 import ChatUsers from '../pages/Admin/ChatUsers';
 import ChatConversations from '../pages/Admin/Conversations';
 import AdminRoute from './AdminRoute';
+import PostsAdmin from '../pages/Admin/Posts';
 
 const router = createBrowserRouter([
   {
@@ -54,6 +55,10 @@ const router = createBrowserRouter([
       {
         path: '/admin/conversations',
         element: <AdminRoute><ChatConversations /></AdminRoute>,
+      },
+      {
+        path: '/admin/posts',
+        element: <AdminRoute><PostsAdmin /></AdminRoute>,
       },
     ],
   },

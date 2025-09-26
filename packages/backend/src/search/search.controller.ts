@@ -43,7 +43,16 @@ export class SearchController {
     return this.search.searchUsers(q, Number(limit) || 20, Number(offset) || 0)
   }
 
-  // 一键重建 Posts/Users 的索引（开发/维护用）
+  @Get('modules')
+  async searchModules(
+    @Query('q') q: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.search.searchModules(q, Number(limit) || 20, Number(offset) || 0)
+  }
+
+  // 一键重建 Posts/Users/Modules 的索引（开发/维护用）
   @Post('rebuild')
   async rebuild() {
     const res = await this.search.rebuildAllIndices()

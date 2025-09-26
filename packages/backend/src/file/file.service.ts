@@ -11,23 +11,31 @@ export class FileService implements OnModuleInit {
 
   constructor(private readonly configService: ConfigService) {
     this.minioClient = new Minio.Client({
-      endPoint: this.configService.get('MINIO_ENDPOINT', 'localhost'),
-      port: parseInt(this.configService.get('MINIO_PORT', '9000')),
+      endPoint: this.configService.get<string>('MINIO_ENDPOINT') ?? 'localhost',
+      port: parseInt(this.configService.get<string>('MINIO_PORT') ?? '9000'),
       useSSL: false,
-      accessKey: this.configService.get('MINIO_ACCESS_KEY', ''),
-      secretKey: this.configService.get('MINIO_SECRET_KEY', ''),
+      accessKey: this.configService.get<string>('MINIO_ACCESS_KEY') ?? '',
+      secretKey: this.configService.get<string>('MINIO_SECRET_KEY') ?? '',
     });
-    this.bucketName = this.configService.get('MINIO_BUCKET_NAME', 'avatars');
+    const bucket = this.configService.get<string>('MINIO_BUCKET') ?? this.configService.get<string>('MINIO_BUCKET_NAME') ?? 'avatars';
+    this.bucketName = bucket;
   }
 
   async onModuleInit() {
-    const bucketExists = await this.minioClient.bucketExists(this.bucketName);
-    if (!bucketExists) {
-      this.logger.log(`Bucket ${this.bucketName} does not exist. Creating...`);
-      await this.minioClient.makeBucket(this.bucketName, 'us-east-1');
-      this.logger.log(`Bucket ${this.bucketName} created.`);
-    } else {
-      this.logger.log(`Bucket ${this.bucketName} already exists.`);
+    // 初始化桶（若不可用或凭证错误则不阻塞服务启动）
+    try {
+      const bucketExists = await this.minioClient.bucketExists(this.bucketName);
+      if (!bucketExists) {
+        this.logger.log(`Bucket ${this.bucketName} does not exist. Creating...`);
+        await this.minioClient.makeBucket(this.bucketName, 'us-east-1');
+        this.logger.log(`Bucket ${this.bucketName} created.`);
+      } else {
+        this.logger.log(`Bucket ${this.bucketName} already exists.`);
+      }
+    } catch (e) {
+      this.logger.error(`MinIO init failed: ${String((e as any)?.message || e)}`);
+      // 避免在开发环境因 MinIO 未启动或凭证不匹配而导致服务崩溃
+      return;
     }
 
     // Ensure public read policy so avatars can be accessed by the browser directly

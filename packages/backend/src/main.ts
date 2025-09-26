@@ -25,10 +25,15 @@ async function bootstrap() {
   app.use('/api/uploads', expressStatic(uploadsDir));
 
   const configService = app.get(ConfigService);
-  // 允许本地 C-frontend (3001) 与默认前端 (5173)
+  // 允许本地 C-frontend (3001/3011) 与默认前端 (5173)
   const frontendOrigin =
     configService.get<string>('FRONTEND_ORIGIN') || 'http://localhost:5173';
-  const allowOrigins = new Set<string>([frontendOrigin, 'http://localhost:3001', 'http://localhost:5173']);
+  const allowOrigins = new Set<string>([
+    frontendOrigin,
+    'http://localhost:3001',
+    'http://localhost:3011',
+    'http://localhost:5173',
+  ]);
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);

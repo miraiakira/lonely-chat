@@ -5,12 +5,14 @@ import { SearchService } from './search.service'
 import { SearchController } from './search.controller'
 import { UserModule } from '../user/user.module'
 import { PostsModule } from '../posts/posts.module'
+import { ModuleMetaModule } from '../module-meta/module-meta.module'
 
 @Module({
   imports: [
     ConfigModule,
     forwardRef(() => UserModule),
     forwardRef(() => PostsModule),
+    forwardRef(() => ModuleMetaModule),
     ElasticsearchModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

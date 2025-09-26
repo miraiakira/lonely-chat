@@ -15,6 +15,10 @@ export class PostEntity {
   @Column({ type: 'jsonb', nullable: true })
   images?: string[] | null
 
+  @Column({ type: 'boolean', default: false })
+  @Index()
+  isHidden!: boolean
+
   @CreateDateColumn({ type: 'timestamptz' })
   @Index()
   createdAt!: Date

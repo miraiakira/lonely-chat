@@ -12,6 +12,7 @@ import { getPosts, createPost } from "@/lib/posts.api"
 import { uploadFile } from "@/lib/upload.api"
 import { likePost, unlikePost, deletePost, listComments, addComment } from "@/lib/posts.actions"
 import { Heart, MessageCircle, Trash2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
 
 export default function FeedPage() {
     const { user, loading: authLoading } = useAuth()
@@ -26,6 +27,8 @@ export default function FeedPage() {
      createdAt: number
      likeCount?: number
      likedByMe?: boolean
+     // 新增：用于初始评论数量显示
+     commentCount?: number
    }>>([])
    const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -40,10 +43,12 @@ export default function FeedPage() {
    const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
    const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({})
    const [comments, setComments] = useState<Record<string, { total: number, items: any[] }>>({})
+   const [replyTargets, setReplyTargets] = useState<Record<string, { commentId: string; toName?: string } | null>>({})
    const [total, setTotal] = useState(0)
    const [loadingMore, setLoadingMore] = useState(false)
    const [preview, setPreview] = useState(false)
    const editorRef = useRef<HTMLTextAreaElement | null>(null)
+   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
    const apiBase = useMemo(() => process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3030/api", [])
    const getAvatarUrl = (avatar?: string | null) => {
@@ -200,16 +205,54 @@ export default function FeedPage() {
      }
    }
 
+   function focusCommentInput(postId: string) {
+     const el = commentInputRefs.current[postId]
+     if (!el) return
+     const len = el.value?.length ?? 0
+     el.focus()
+     try { el.setSelectionRange(len, len) } catch {}
+   }
+
+   async function openCommentsAndFocus(postId: string) {
+     if (!comments[postId]) {
+       await loadComments(postId)
+     }
+     requestAnimationFrame(() => focusCommentInput(postId))
+   }
+   const [commentErrors, setCommentErrors] = useState<Record<string, string | null>>({})
    async function submitComment(postId: string) {
      const text = (commentDrafts[postId] || '').trim()
      if (!text) return
      setCommentLoading((s) => ({ ...s, [postId]: true }))
+     setCommentErrors((s) => ({ ...s, [postId]: null }))
      try {
-       await addComment(postId, text)
+       const parentId = replyTargets[postId]?.commentId
+       // 如果指定了父评论，但本地列表中不存在，直接提示并中止
+       if (parentId && !comments[postId]?.items?.some((it: any) => String(it.id) === String(parentId))) {
+         setCommentErrors((s) => ({ ...s, [postId]: '回复的评论不存在或已删除' }))
+         return
+       }
+       // 如果是自己回复自己，则作为顶级评论处理（不传 parentId）
+       const parentComment = comments[postId]?.items?.find((it: any) => String(it.id) === String(parentId))
+       const isSelfReply = parentComment && String(parentComment.authorId) === String(user?.id)
+       const sendParentId = isSelfReply ? undefined : parentId
+
+       await addComment(postId, text, sendParentId)
        setCommentDrafts((s) => ({ ...s, [postId]: '' }))
+       setReplyTargets((s) => ({ ...s, [postId]: null }))
        await loadComments(postId)
      } catch (e: any) {
-       setError(e?.message || '发表评论失败')
+       const status = e?.response?.status
+       const serverMsg = Array.isArray(e?.response?.data?.message) ? e.response.data.message.join(', ') : (e?.response?.data?.message || e?.message)
+       if (status === 404) {
+         if (typeof serverMsg === 'string' && /parent comment/i.test(serverMsg)) {
+           setCommentErrors((s) => ({ ...s, [postId]: '回复的评论不存在或不属于本动态' }))
+         } else {
+           setCommentErrors((s) => ({ ...s, [postId]: '动态不存在或已删除' }))
+         }
+       } else {
+         setCommentErrors((s) => ({ ...s, [postId]: serverMsg || '发表评论失败' }))
+       }
      } finally {
        setCommentLoading((s) => ({ ...s, [postId]: false }))
      }
@@ -293,7 +336,6 @@ export default function FeedPage() {
                  <Button type="button" variant="ghost" size="sm" onClick={() => surroundSelection('*', '*', '斜体')}>I</Button>
                  <Button type="button" variant="ghost" size="sm" onClick={() => surroundSelection('`', '`', '代码')}>Code</Button>
                  <Button type="button" variant="ghost" size="sm" onClick={() => surroundSelection('[', '](https://)', '链接文本')}>Link</Button>
-                 <Button type="button" variant="ghost" size="sm" onClick={() => surroundSelection('# ', '', '标题')}>H1</Button>
                  <Button type="button" variant="outline" size="sm" onClick={() => setPreview(v => !v)}>{preview ? '编辑' : '预览'}</Button>
                </div>
                <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -392,9 +434,9 @@ export default function FeedPage() {
                                <Heart className={(m.likedByMe ? 'text-rose-500 fill-rose-500 ' : '') + 'h-4 w-4 transition-transform duration-200 ' + (likeAnimating[m.id] ? 'scale-125 ' : '')} />
                                <span>{m.likedByMe ? '已赞' : '点赞'}（{m.likeCount || 0}）</span>
                              </button>
-                             <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" onClick={() => loadComments(m.id)}>
+                             <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" onClick={() => openCommentsAndFocus(m.id)}>
                                <MessageCircle className="h-4 w-4" />
-                               <span>评论{comments[m.id]?.total ? `（${comments[m.id].total}）` : ''}</span>
+                               <span>评论（{comments[m.id]?.total ?? m.commentCount ?? 0}）</span>
                              </button>
                              {((user?.id && String(user.id) === m.authorId) || (Array.isArray((user as any)?.roles) && ((user as any).roles as any[]).some((r: any) => (typeof r === 'string' ? r : r?.name) === 'admin'))) ? (
                                <button className="inline-flex items-center gap-1 text-destructive hover:opacity-90 transition-opacity hover:cursor-pointer" onClick={() => setConfirmDeleteId(m.id)}>
@@ -410,27 +452,52 @@ export default function FeedPage() {
                                ) : comments[m.id].items.map((c: any) => (
                                  <div key={c.id} className="flex items-start gap-2">
                                    <Avatar className="h-7 w-7">
-                                     {c.authorAvatar ? <AvatarImage src={getAvatarUrl(c.authorAvatar)} alt={c.authorName || c.authorId} /> : <AvatarFallback>{(c.authorName || c.authorId).slice(0, 2)}</AvatarFallback>}
+                                     {c.authorAvatar ? (
+                                       <AvatarImage src={getAvatarUrl(c.authorAvatar)} alt={c.authorName || c.authorId} />
+                                     ) : (
+                                       <AvatarFallback>{(c.authorName || c.authorId).slice(0, 2)}</AvatarFallback>
+                                     )}
                                    </Avatar>
                                    <div className="min-w-0 flex-1">
                                      <div className="flex items-center gap-2">
                                        <div className="font-medium text-xs truncate max-w-[60%]">{c.authorName || `用户 ${c.authorId}`}</div>
                                        <div className="text-[10px] text-muted-foreground">{formatTime(c.createdAt)}</div>
+                                       <button
+                                         className="text-[10px] text-muted-foreground hover:underline"
+                                         onClick={() => { setReplyTargets((s) => ({ ...s, [m.id]: { commentId: c.id, toName: c.authorName || `用户 ${c.authorId}` } })); requestAnimationFrame(() => focusCommentInput(m.id)) }}
+                                       >回复</button>
                                      </div>
-                                     <div className="text-xs whitespace-pre-wrap leading-6 break-words">{c.content}</div>
+                                     <div className="text-xs whitespace-pre-wrap leading-6 break-words">
+                                       {c.parentAuthorName ? (
+                                         <span>回复 <span className="font-medium">{c.parentAuthorName}</span>：{c.content}</span>
+                                       ) : (
+                                         <span>{c.content}</span>
+                                       )}
+                                     </div>
                                    </div>
                                  </div>
                                ))}
                                {isLoggedIn ? (
                                  <div className="flex items-center gap-2">
-                                   <input
-                                     className="flex-1 border rounded px-2 py-1 text-xs"
-                                     placeholder="写下你的评论..."
-                                     value={commentDrafts[m.id] || ''}
-                                     onChange={(e) => setCommentDrafts((s) => ({ ...s, [m.id]: e.target.value }))}
-                                     disabled={commentLoading[m.id]}
-                                   />
-                                   <Button size="sm" disabled={!((commentDrafts[m.id] || '').trim()) || commentLoading[m.id]} onClick={() => submitComment(m.id)}>发送</Button>
+                                   <div className="flex flex-col gap-1">
+                                     {replyTargets[m.id]?.toName ? (
+                                       <div className="text-[10px] text-muted-foreground">
+                                         正在回复 {replyTargets[m.id]?.toName}
+                                         <button className="ml-2 underline" onClick={() => setReplyTargets((s) => ({ ...s, [m.id]: null }))}>取消</button>
+                                       </div>
+                                     ) : null}
+                                     <div className="flex items-center gap-2">
+                                        <Input
+                                          ref={(el) => { commentInputRefs.current[m.id] = el }}
+                                          className="flex-1 h-8 text-xs rounded-full px-3 border"
+                                          placeholder={replyTargets[m.id]?.toName ? `回复 ${replyTargets[m.id]?.toName}...` : "写下你的评论..."}
+                                          value={commentDrafts[m.id] || ''}
+                                          onChange={(e) => setCommentDrafts((s) => ({ ...s, [m.id]: e.target.value }))}
+                                          disabled={commentLoading[m.id]}
+                                        />
+                                        <Button size="sm" className="h-8 rounded-full px-3" disabled={!((commentDrafts[m.id] || '').trim()) || commentLoading[m.id]} onClick={() => submitComment(m.id)}>发送</Button>
+                                     </div>
+                                   </div>
                                  </div>
                                ) : null}
                              </div>

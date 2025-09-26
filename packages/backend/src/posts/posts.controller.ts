@@ -11,9 +11,9 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query, Req, U
  
    @UseGuards(OptionalJwtAuthGuard)
    @Get()
-   async list(@Req() req: any, @Query('limit') limit?: string, @Query('offset') offset?: string) {
+   async list(@Req() req: any, @Query('limit') limit?: string, @Query('offset') offset?: string, @Query('includeHidden') includeHidden?: string) {
      const uid = req.user?.id
-     return this.posts.list(Number(limit), Number(offset), uid)
+     return this.posts.list(Number(limit), Number(offset), uid, includeHidden === 'true')
    }
 
   @UseGuards(JwtAuthGuard)
@@ -48,6 +48,20 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query, Req, U
   @Get(':id/comments')
   async listComments(@Param('id', ParseIntPipe) id: number, @Query('limit') limit?: string, @Query('offset') offset?: string) {
     return this.posts.listComments(id, Number(limit), Number(offset))
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/hide')
+  async hide(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    const userId = req.user?.id
+    return this.posts.setHidden(userId, id, true)
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/unhide')
+  async unhide(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    const userId = req.user?.id
+    return this.posts.setHidden(userId, id, false)
   }
 
   @UseGuards(JwtAuthGuard)

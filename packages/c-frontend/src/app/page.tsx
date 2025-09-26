@@ -16,6 +16,7 @@ import { uploadFile } from "@/lib/upload.api"
 import { likePost, unlikePost, deletePost, listComments, addComment } from "@/lib/posts.actions"
 import { Input } from "@/components/ui/input"
 import { searchPosts, type PostSearchItem } from "@/lib/search.api"
+import Spinner from "@/components/ui/spinner"
 
 export default function Home() {
   const { user, logout } = useAuth()
@@ -38,6 +39,7 @@ export default function Home() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [preview, setPreview] = useState(false)
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
+  const [replyTargets, setReplyTargets] = useState<Record<string, { commentId: string; toName?: string } | null>>({})
 
   // 搜索相关状态
   const [q, setQ] = useState("")
@@ -235,16 +237,48 @@ async function loadComments(postId: string) {
   }
 }
 
+const [commentErrors, setCommentErrors] = useState<Record<string, string | null>>({})
+const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+function focusCommentInput(postId: string) {
+  const el = commentInputRefs.current[postId]
+  if (!el) return
+  const len = el.value?.length ?? 0
+  el.focus()
+  try { el.setSelectionRange(len, len) } catch {}
+}
 async function submitComment(postId: string) {
   const text = (commentDrafts[postId] || '').trim()
   if (!text) return
   setCommentLoading((s) => ({ ...s, [postId]: true }))
+  setCommentErrors((s) => ({ ...s, [postId]: null }))
   try {
-    await addComment(postId, text)
+    const parentId = replyTargets[postId]?.commentId
+    // 如果指定了父评论，但本地列表中不存在，直接提示并中止
+    if (parentId && !comments[postId]?.items?.some((it: any) => String(it.id) === String(parentId))) {
+      setCommentErrors((s) => ({ ...s, [postId]: '回复的评论不存在或已删除' }))
+      return
+    }
+    // 如果是自己回复自己，则作为顶级评论处理（不传 parentId）
+    const parentComment = comments[postId]?.items?.find((it: any) => String(it.id) === String(parentId))
+    const isSelfReply = parentComment && String(parentComment.authorId) === String(user?.id)
+    const sendParentId = isSelfReply ? undefined : parentId
+
+    await addComment(postId, text, sendParentId)
     setCommentDrafts((s) => ({ ...s, [postId]: '' }))
+    setReplyTargets((s) => ({ ...s, [postId]: null }))
     await loadComments(postId)
   } catch (e: any) {
-    setError(e?.message || '发表评论失败')
+    const status = e?.response?.status
+    const serverMsg = Array.isArray(e?.response?.data?.message) ? e.response.data.message.join(', ') : (e?.response?.data?.message || e?.message)
+    if (status === 404) {
+      if (typeof serverMsg === 'string' && /parent comment/i.test(serverMsg)) {
+        setCommentErrors((s) => ({ ...s, [postId]: '回复的评论不存在或不属于本动态' }))
+      } else {
+        setCommentErrors((s) => ({ ...s, [postId]: '动态不存在或已删除' }))
+      }
+    } else {
+      setCommentErrors((s) => ({ ...s, [postId]: serverMsg || '发表评论失败' }))
+    }
   } finally {
     setCommentLoading((s) => ({ ...s, [postId]: false }))
   }
@@ -309,7 +343,7 @@ return (
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') onSearch() }}
           />
-          <Button onClick={onSearch} disabled={!canSearch || searchLoading}>{searchLoading ? '搜索中...' : '搜索'}</Button>
+          <Button className="w-[80px]" onClick={onSearch} disabled={!canSearch || searchLoading}>{searchLoading ? <Spinner /> : '搜索'}</Button>
           {searchActive && (
             <Button variant="outline" onClick={clearSearch}>清除</Button>
           )}
@@ -470,11 +504,11 @@ return (
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="font-medium text-sm truncate max-w-[60%]"><span dangerouslySetInnerHTML={{ __html: it.authorUsernameHighlight || (it.authorUsername || String(it.authorId)) }} /></div>
+                        <div className="font-medium text-sm truncate max-w-[60%]"><span className="search-highlight" dangerouslySetInnerHTML={{ __html: it.authorUsernameHighlight || (it.authorUsername || String(it.authorId)) }} /></div>
                         <div className="text-xs text-muted-foreground">{formatTime(it.createdAt as any)}</div>
                       </div>
                       <div className="text-sm leading-6 break-words">
-                        <span dangerouslySetInnerHTML={{ __html: it.contentHighlight || it.content }} />
+                        <span className="search-highlight" dangerouslySetInnerHTML={{ __html: it.contentHighlight || it.content }} />
                       </div>
                       {Array.isArray(it.images) && it.images.length > 0 ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
@@ -489,9 +523,6 @@ return (
                 </div>
               ))
             )}
-            <div className="pt-2">
-              <Button variant="outline" size="sm" onClick={clearSearch}>清除搜索</Button>
-            </div>
           </div>
         ) : (
           // 仍旧显示最新动态列表
@@ -532,7 +563,7 @@ return (
                           </button>
                           <button className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" onClick={() => loadComments(m.id)}>
                             <MessageCircle className="h-4 w-4" />
-                            <span>评论{comments[m.id]?.total ? `（${comments[m.id].total}）` : ''}</span>
+                            <span>评论（{comments[m.id]?.total ?? m.commentCount ?? 0}）</span>
                           </button>
                           {((user?.id && String(user.id) === m.authorId) || (Array.isArray((user as any)?.roles) && ((user as any).roles as any[]).some((r: any) => (typeof r === 'string' ? r : r?.name) === 'admin'))) ? (
                             <button className="inline-flex items-center gap-1 text-destructive hover:opacity-90 transition-opacity hover:cursor-pointer" onClick={() => setConfirmDeleteId(m.id)}>
@@ -546,31 +577,54 @@ return (
                             {comments[m.id].items.length === 0 ? (
                               <div className="text-xs text-muted-foreground">暂无评论</div>
                             ) : comments[m.id].items.map((c: any) => (
-                              <div key={c.id} className="flex items-start gap-2">
-                                <Avatar className="h-7 w-7">
-                                  {c.authorAvatar ? <AvatarImage src={getAvatarUrl(c.authorAvatar)} alt={c.authorName || c.authorId} /> : <AvatarFallback>{(c.authorName || c.authorId).slice(0, 2)}</AvatarFallback>}
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="font-medium text-xs truncate max-w-[60%]">{c.authorName || `用户 ${c.authorId}`}</div>
-                                    <div className="text-[10px] text-muted-foreground">{formatTime(c.createdAt)}</div>
+                                <div key={c.id} className="flex items-start gap-2">
+                                  <Avatar className="h-7 w-7">
+                                    {c.authorAvatar ? (
+                                      <AvatarImage src={getAvatarUrl(c.authorAvatar)} alt={c.authorName || c.authorId} />
+                                    ) : (
+                                      <AvatarFallback>{(c.authorName || c.authorId).slice(0, 2)}</AvatarFallback>
+                                    )}
+                                  </Avatar>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="font-medium text-xs truncate max-w-[60%]">{c.authorName || `用户 ${c.authorId}`}</div>
+                                      <div className="text-[10px] text-muted-foreground">{formatTime(c.createdAt)}</div>
+                                      <button
+                                        className="text-[10px] text-muted-foreground hover:underline"
+                                        onClick={() => { setReplyTargets((s) => ({ ...s, [m.id]: { commentId: c.id, toName: c.authorName || `用户 ${c.authorId}` } })); requestAnimationFrame(() => focusCommentInput(m.id)) }}
+                                    >回复</button>
+                                    </div>
+                                    <div className="text-xs whitespace-pre-wrap leading-6 break-words">
+                                      {c.parentAuthorName ? (
+                                        <span>回复 <span className="font-medium">{c.parentAuthorName}</span>：{c.content}</span>
+                                      ) : (
+                                        <span>{c.content}</span>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="text-xs whitespace-pre-wrap leading-6 break-words">{c.content}</div>
                                 </div>
-                              </div>
-                            ))}
-                            {isLoggedIn ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  className="flex-1 border rounded px-2 py-1 text-xs"
-                                  placeholder="写下你的评论..."
-                                  value={commentDrafts[m.id] || ''}
-                                  onChange={(e) => setCommentDrafts((s) => ({ ...s, [m.id]: e.target.value }))}
-                                  disabled={commentLoading[m.id]}
-                                />
-                                <Button size="sm" disabled={!((commentDrafts[m.id] || '').trim()) || commentLoading[m.id]} onClick={() => submitComment(m.id)}>发送</Button>
-                              </div>
-                            ) : null}
+                              ))}
+                              {isLoggedIn ? (
+                                <div className="flex flex-col gap-1">
+                                  {replyTargets[m.id]?.toName ? (
+                                    <div className="text-[10px] text-muted-foreground">
+                                      正在回复 {replyTargets[m.id]?.toName}
+                                      <button className="ml-2 underline" onClick={() => setReplyTargets((s) => ({ ...s, [m.id]: null }))}>取消</button>
+                                    </div>
+                                  ) : null}
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      ref={(el) => { commentInputRefs.current[m.id] = el }}
+                                      className="flex-1 h-8 text-xs rounded-full px-3 border"
+                                      placeholder={replyTargets[m.id]?.toName ? `回复 ${replyTargets[m.id]?.toName}...` : "写下你的评论..."}
+                                      value={commentDrafts[m.id] || ''}
+                                      onChange={(e) => setCommentDrafts((s) => ({ ...s, [m.id]: e.target.value }))}
+                                      disabled={commentLoading[m.id]}
+                                    />
+                                    <Button size="sm" disabled={!((commentDrafts[m.id] || '').trim()) || commentLoading[m.id]} onClick={() => submitComment(m.id)}>发送</Button>
+                                  </div>
+                                </div>
+                              ) : null}
                           </div>
                         ) : null}
                       </div>

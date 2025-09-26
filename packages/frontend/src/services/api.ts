@@ -194,3 +194,27 @@ export const adminListConversations = async (params: { q?: string; page?: number
   const res = await apiClient.get('/admin/conversations', { params });
   return res.data;
 };
+
+export const adminListPosts = async (params: { page?: number; pageSize?: number } = {}) => {
+  const page = typeof params.page === 'number' && params.page > 0 ? params.page : 1;
+  const pageSize = typeof params.pageSize === 'number' && params.pageSize > 0 ? params.pageSize : 20;
+  const limit = pageSize;
+  const offset = (page - 1) * pageSize;
+  const res = await apiClient.get('/posts', { params: { limit, offset, includeHidden: true } });
+  return res.data as { total: number; items: Array<{ id: string; authorId: string; authorName?: string; authorAvatar?: string | null; content: string; images?: string[] | null; createdAt: number; likeCount?: number; likedByMe?: boolean; commentCount?: number; isHidden?: boolean }> };
+};
+
+export const adminDeletePost = async (id: number) => {
+  const res = await apiClient.delete(`/posts/${id}`);
+  return res.data;
+};
+
+export const adminHidePost = async (id: number) => {
+  const res = await apiClient.post(`/posts/${id}/hide`);
+  return res.data;
+};
+
+export const adminUnhidePost = async (id: number) => {
+  const res = await apiClient.post(`/posts/${id}/unhide`);
+  return res.data;
+};

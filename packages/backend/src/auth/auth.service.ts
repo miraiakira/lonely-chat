@@ -141,6 +141,7 @@ export class AuthService {
       ['manage_users', 'user:manage'],
       ['manage_roles', 'role:manage'],
       ['manage_permissions', 'permission:manage'],
+      ['manage_modules', 'module:manage'],
     ];
     const expanded = new Set(perms);
     for (const [legacy, modern] of aliasPairs) {

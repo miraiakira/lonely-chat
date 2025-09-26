@@ -4,3 +4,4 @@ dist/
 cleanup-node-modules.sh
 
 .env.local
+.env

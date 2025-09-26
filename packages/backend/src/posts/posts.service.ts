@@ -19,17 +19,26 @@ export class PostsService {
     @Inject(forwardRef(() => SearchService)) private readonly searchService: SearchService,
   ) {}
 
-  async list(limit = 50, offset = 0, currentUserId?: number) {
+  async list(limit = 50, offset = 0, currentUserId?: number, includeHidden?: boolean) {
     const take = Math.max(1, Math.min(100, Number(limit) || 50))
     const skip = Math.max(0, Number(offset) || 0)
-
+  
+    let isAdmin = false
+    if (includeHidden && currentUserId) {
+      const user = await this.userRepo.findOne({ where: { id: currentUserId }, relations: ['roles'] })
+      isAdmin = (user as any)?.roles?.some?.((r: any) => r?.name === 'admin')
+    }
+  
+    const where = (!includeHidden || !isAdmin) ? { isHidden: false } as any : {}
+  
     const [items, total] = await this.postRepo.findAndCount({
+      where,
       order: { createdAt: 'DESC' },
       take,
       skip,
       relations: ['author', 'author.profile'],
     })
-
+  
     // 统计点赞数与是否点赞
     const postIds = items.map((p) => p.id)
     const likeCounts: Record<number, number> = {}
@@ -43,7 +52,7 @@ export class PostsService {
         .getRawMany<{ postId: number; cnt: string }>()
       for (const r of rows) likeCounts[r.postId] = Number(r.cnt)
     }
-
+  
     // 统计评论数
     const commentCounts: Record<number, number> = {}
     if (postIds.length > 0) {
@@ -56,7 +65,7 @@ export class PostsService {
         .getRawMany<{ postId: number; cnt: string }>()
       for (const r of rows) commentCounts[r.postId] = Number(r.cnt)
     }
-
+  
     let likedByMeSet = new Set<number>()
     if (currentUserId && postIds.length > 0) {
     // 使用 queryBuilder 进行 IN 查询，避免不正确的数组等值比较导致数据库错误
@@ -68,7 +77,7 @@ export class PostsService {
          .getRawMany<{ postId: number }>()
        likedByMeSet = new Set(likedRows.map((r) => r.postId))
      }
-
+  
     return {
       total,
       items: items.map((p) => ({
@@ -82,6 +91,7 @@ export class PostsService {
         likeCount: likeCounts[p.id] || 0,
         likedByMe: currentUserId ? likedByMeSet.has(p.id) : false,
         commentCount: commentCounts[p.id] || 0,
+        isHidden: !!(p as any)?.isHidden,
       })),
     }
   }
@@ -99,6 +109,7 @@ export class PostsService {
       .leftJoinAndSelect('p.author', 'author')
       .leftJoinAndSelect('author.profile', 'profile')
       .where('p.content ILIKE :q', { q: `%${query}%` })
+      .andWhere('p.isHidden = false')
       .orderBy('p.createdAt', 'DESC')
       .take(take)
       .skip(skip)
@@ -187,6 +198,7 @@ export class PostsService {
     const user = await this.userRepo.findOne({ where: { id: userId } })
     const post = await this.postRepo.findOne({ where: { id: postId } })
     if (!user || !post) throw new NotFoundException('Not found')
+    if ((post as any)?.isHidden) throw new ForbiddenException('Post is hidden')
     const existing = await this.likeRepo.findOne({ where: { user: { id: user.id } as any, post: { id: post.id } as any } })
     if (existing) return { ok: true }
     const like = this.likeRepo.create({ user, post })
@@ -221,9 +233,26 @@ export class PostsService {
 
   async addComment(userId: number, postId: number, dto: CreateCommentDto) {
     const author = await this.userRepo.findOne({ where: { id: userId }, relations: ['profile'] })
-    const post = await this.postRepo.findOne({ where: { id: postId } })
+    const post = await this.postRepo.findOne({ where: { id: postId }, relations: ['author', 'author.profile'] })
     if (!author || !post) throw new NotFoundException('Not found')
-    const c = this.commentRepo.create({ author, post, content: dto.content })
+    if ((post as any)?.isHidden) throw new ForbiddenException('Post is hidden')
+    let parent: PostComment | null = null
+    if (dto.parentCommentId) {
+      parent = await this.commentRepo.findOne({
+        where: { id: dto.parentCommentId },
+        relations: ['post', 'author', 'author.profile'],
+      })
+      if (!parent || (parent.post as any)?.id !== postId) {
+        throw new NotFoundException('Parent comment not found')
+      }
+    }
+    const c = this.commentRepo.create({
+      author,
+      post,
+      content: dto.content,
+      parent: parent || null,
+      replyTo: parent ? parent.author : (post as any)?.author || null,
+    })
     const saved = await this.commentRepo.save(c)
     // 重新统计评论数并更新 ES
     const [{ cnt }] = await this.commentRepo
@@ -240,6 +269,10 @@ export class PostsService {
       authorAvatar: (author as any)?.profile?.avatar || null,
       content: saved.content,
       createdAt: saved.createdAt.getTime(),
+      // reply info
+      parentCommentId: parent ? String(parent.id) : undefined,
+      parentAuthorId: parent ? String(parent.author?.id) : undefined,
+      parentAuthorName: parent ? ((parent as any)?.author?.profile?.nickname || parent.author?.username) : undefined,
     }
   }
 
@@ -251,7 +284,7 @@ export class PostsService {
       order: { createdAt: 'ASC' },
       take,
       skip,
-      relations: ['author', 'author.profile'],
+      relations: ['author', 'author.profile', 'parent', 'parent.author', 'parent.author.profile'],
     })
     return {
       total,
@@ -263,6 +296,9 @@ export class PostsService {
         authorAvatar: (c as any)?.author?.profile?.avatar || null,
         content: c.content,
         createdAt: c.createdAt.getTime(),
+        parentCommentId: c.parent ? String(c.parent.id) : undefined,
+        parentAuthorId: c.parent ? String(c.parent.author?.id) : undefined,
+        parentAuthorName: c.parent ? ((c as any)?.parent?.author?.profile?.nickname || c.parent.author?.username) : undefined,
       })),
     }
   }
@@ -333,5 +369,39 @@ export class PostsService {
       commentCount: Number(commentRow?.cnt || 0),
       createdAt: p.createdAt?.getTime?.() || Date.now(),
     }
+  }
+  async setHidden(userId: number, postId: number, hidden: boolean) {
+    const post = await this.postRepo.findOne({ where: { id: postId }, relations: ['author'] })
+    if (!post) throw new NotFoundException('Post not found')
+
+    const user = await this.userRepo.findOne({ where: { id: userId }, relations: ['roles'] })
+    if (!user) throw new NotFoundException('User not found')
+
+    const isAdmin = (user as any)?.roles?.some?.((r: any) => r?.name === 'admin')
+    if (!isAdmin) {
+      throw new ForbiddenException('No permission')
+    }
+
+    (post as any).isHidden = !!hidden
+    await this.postRepo.save(post)
+
+    if (hidden) {
+      this.searchService.removePostIndex(postId).catch(() => void 0)
+    } else {
+      const summarized = await this.getSummarizedPostById(postId)
+      if (summarized) {
+        await this.searchService.indexPostDocument({
+          id: summarized.id,
+          content: summarized.content,
+          authorId: summarized.authorId,
+          authorUsername: summarized.authorName,
+          images: summarized.images,
+          likesCount: summarized.likeCount,
+          commentsCount: summarized.commentCount,
+          createdAt: summarized.createdAt,
+        }).catch(() => void 0)
+      }
+    }
+    return { ok: true }
   }
 }
