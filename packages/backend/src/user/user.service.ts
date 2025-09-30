@@ -79,8 +79,8 @@ export class UserService {
     return this.userRepository.save(user);
   }
 
-  async create(createUserDto: CreateUserDto, roleNames?: string[]): Promise<User> {
-    const profile = new UserProfile();
+  async create(createUserDto: CreateUserDto, roleNames?: string[], profileData?: Partial<UserProfile>): Promise<User> {
+    const profile = this.userProfileRepository.create(profileData || {});
     const user = this.userRepository.create({
       ...createUserDto,
       profile,

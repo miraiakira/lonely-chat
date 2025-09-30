@@ -17,10 +17,6 @@ export class SeedService {
     this.logger.log('Checking if seeding is required...')
 
     const adminUser = await this.userService.findOneByUsername('superadmin')
-    if (adminUser) {
-      this.logger.log('Existing superadmin found. Reconciling roles/permissions...')
-    }
-
     this.logger.log('Start seeding database (idempotent)...')
 
     this.logger.log('Seeding permissions...')
@@ -58,16 +54,19 @@ export class SeedService {
     )
     this.logger.log('Permissions assigned to admin.')
 
-    // 仅当 superadmin 不存在时创建
-    if (!adminUser) {
+    // 无论是否存在，都确保 superadmin 的昵称和角色正确
+    if (adminUser) {
+      this.logger.log('Existing superadmin found. Reconciling roles/permissions and profile...')
+      await this.userService.update(adminUser.id, {} as any, { nickname: 'Super Admin', avatar: 'https://www.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50' } as any)
+      await this.userService.assignRoles(adminUser.id, { roleIds: [adminRole.id] })
+    } else {
       this.logger.log('Seeding super admin...')
       await this.userService.create(
         { username: 'superadmin', password: 'password' },
         ['admin'],
+        { nickname: 'Super Admin' },
       )
       this.logger.log('Super admin seeded successfully.')
-    } else {
-      this.logger.log('Super admin exists. Skipping user creation.')
     }
 
     // 演示用户（若不存在则创建），便于本地搜索/聊天联调
@@ -84,16 +83,11 @@ export class SeedService {
       }
       try {
         this.logger.log(`[seed] creating demo user: ${du.username}`)
-        const u = await this.userService.create(
+        await this.userService.create(
           { username: du.username, password: 'password' },
           ['user'],
+          { nickname: du.nickname },
         )
-        try {
-          // 更新昵称
-          await this.userService.update(u.id, {} as any, { nickname: du.nickname } as any)
-        } catch (e) {
-          this.logger.warn(`[seed] set nickname failed for ${du.username}: ${e instanceof Error ? e.message : e}`)
-        }
       } catch (e) {
         this.logger.warn(`[seed] create demo user failed (${du.username}): ${e instanceof Error ? e.message : e}`)
       }

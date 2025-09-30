@@ -18,6 +18,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { FriendModule } from './friend/friend.module';
 import { PostsModule } from './posts/posts.module';
 import { SearchModule } from './search/search.module';
+import { RewardsModule } from './rewards/rewards.module'
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { SearchModule } from './search/search.module';
     FriendModule,
     PostsModule,
     SearchModule,
+    RewardsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
