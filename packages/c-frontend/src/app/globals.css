@@ -20,9 +20,13 @@
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
 
-  --border: #e5e7eb;
+  /* 边框颜色更淡（浅色主题） */
+  --border: rgba(2, 6, 23, 0.08);
   --input: #e5e7eb;
   --ring: #93c5fd;
+  /* unified popover tokens */
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
 }
 
 @theme inline {
@@ -47,6 +51,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -73,9 +79,12 @@
     --secondary: #121316;
     --secondary-foreground: #e5e7eb;
 
-    --border: #1f2937;
+    /* 边框颜色更淡（暗色自动偏好） */
+    --border: rgba(229, 231, 235, 0.12);
     --input: #1f2937;
     --ring: #2563eb;
+    --popover: var(--card);
+    --popover-foreground: var(--card-foreground);
   }
 }
 
@@ -87,24 +96,35 @@
 
 /* aurora: soft gradient background with airy cards */
 [data-skin="aurora"] {
-  --background: radial-gradient(1200px 600px at -10% -10%, rgba(99,102,241,0.18), transparent 60%),
-                 radial-gradient(900px 500px at 120% 10%, rgba(236,72,153,0.16), transparent 60%),
-                 #fbfbff;
+  --background:
+    radial-gradient(
+      1200px 600px at -10% -10%,
+      rgba(99, 102, 241, 0.18),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at 120% 10%,
+      rgba(236, 72, 153, 0.16),
+      transparent 60%
+    ),
+    #fbfbff;
   --foreground: #0f172a;
 
   /* 改为不透明纯色，避免“透底”效果 */
   --card: #ffffff;
   --card-foreground: #0f172a;
-  --muted: rgba(15,23,42,0.06);
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --muted: rgba(15, 23, 42, 0.06);
   --muted-foreground: #475569;
-  --accent: rgba(99,102,241,0.08);
+  --accent: rgba(99, 102, 241, 0.08);
   --accent-foreground: #0f172a;
   --primary: #4f46e5;
   --primary-foreground: #ffffff;
-  --secondary: rgba(15,23,42,0.04);
+  --secondary: rgba(15, 23, 42, 0.04);
   --secondary-foreground: #0f172a;
-  --border: rgba(2,6,23,0.08);
-  --input: rgba(2,6,23,0.12);
+  --border: rgba(2, 6, 23, 0.08);
+  --input: rgba(2, 6, 23, 0.12);
   --ring: #818cf8;
 }
 
@@ -122,20 +142,32 @@
   --primary-foreground: #ffffff;
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
-  --border: #e4e4e7;
+  /* 边框颜色更淡（Graphite 皮肤） */
+  --border: rgba(2, 6, 23, 0.1);
   --input: #e4e4e7;
   --ring: #6366f1;
 }
 
 /* midnight: deep dark with vibrant accents */
 [data-skin="midnight"] {
-  --background: radial-gradient(800px 500px at 10% -10%, rgba(37,99,235,0.18), transparent 60%),
-                 radial-gradient(900px 600px at 100% 0%, rgba(147,51,234,0.16), transparent 60%),
-                 #0a0b0e;
+  --background:
+    radial-gradient(
+      800px 500px at 10% -10%,
+      rgba(37, 99, 235, 0.18),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at 100% 0%,
+      rgba(147, 51, 234, 0.16),
+      transparent 60%
+    ),
+    #0a0b0e;
   --foreground: #e6e7eb;
   /* 改为不透明纯色，避免“透底”效果 */
   --card: #111218;
   --card-foreground: #e6e7eb;
+  --popover: #111218;
+  --popover-foreground: #e6e7eb;
   --muted: #12131a;
   --muted-foreground: #9aa0aa;
   --accent: #0f1220;
@@ -144,7 +176,8 @@
   --primary-foreground: #ffffff;
   --secondary: #10121a;
   --secondary-foreground: #e6e7eb;
-  --border: #1e2230;
+  /* 边框颜色更淡（Midnight 皮肤） */
+  --border: rgba(229, 231, 235, 0.12);
   --input: #1e2230;
   --ring: #60a5fa;
 }
@@ -153,6 +186,78 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 预留滚动条槽，减少/避免因滚动条出现与消失导致的页面抖动 */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* React Virtualized List scrollbar theme (matches current skin tokens) */
+.rv-scroll,
+.ReactVirtualized__Grid,
+.ReactVirtualized__List {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-foreground) var(--background);
+}
+.rv-scroll::-webkit-scrollbar,
+.ReactVirtualized__Grid::-webkit-scrollbar,
+.ReactVirtualized__List::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.rv-scroll::-webkit-scrollbar-track,
+.ReactVirtualized__Grid::-webkit-scrollbar-track,
+.ReactVirtualized__List::-webkit-scrollbar-track {
+  background-color: var(--background);
+}
+.rv-scroll::-webkit-scrollbar-thumb,
+.ReactVirtualized__Grid::-webkit-scrollbar-thumb,
+.ReactVirtualized__List::-webkit-scrollbar-thumb {
+  background-color: var(--muted-foreground);
+  border: 3px solid var(--background);
+  border-radius: 9999px;
+}
+.rv-scroll::-webkit-scrollbar-thumb:hover,
+.ReactVirtualized__Grid::-webkit-scrollbar-thumb:hover,
+.ReactVirtualized__List::-webkit-scrollbar-thumb:hover {
+  background-color: var(--primary);
+}
+
+/* Themed ScrollArea scrollbar (global) */
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-foreground) var(--background);
+}
+.themed-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+  background-color: var(--background);
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--muted-foreground);
+  border: 3px solid var(--background);
+  border-radius: 9999px;
+}
+.themed-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--primary);
+}
+
+/* Subtle border token per skin */
+:root {
+  --border-subtle: rgba(2, 6, 23, 0.06);
+}
+[data-skin="aurora"] {
+  --border-subtle: rgba(2, 6, 23, 0.06);
+}
+[data-skin="graphite"] {
+  --border-subtle: rgba(2, 6, 23, 0.08);
+}
+[data-skin="midnight"] {
+  --border-subtle: rgba(229, 231, 235, 0.09);
 }
 
 /* Links: default to theme primary, exclude button-asChild anchors */
@@ -174,8 +279,12 @@ a[data-slot="button"] {
 }
 
 /* Contrast helpers for Button (applies when needed, no visual change by default) */
-[data-slot="button"].on-dark { color: var(--primary-foreground); }
-[data-slot="button"].on-light { color: var(--foreground); }
+[data-slot="button"].on-dark {
+  color: var(--primary-foreground);
+}
+[data-slot="button"].on-light {
+  color: var(--foreground);
+}
 
 /* Search highlight container: ensures inner <em> or strong has visible styles */
 .search-highlight em,
@@ -188,4 +297,6 @@ a[data-slot="button"] {
 }
 
 /* fallback: if backend没返回<em>，但我们仍包了容器，不要影响布局 */
-.search-highlight { display: inline; }
+.search-highlight {
+  display: inline;
+}

@@ -1,4 +1,4 @@
-import axios from "axios"
+import axios, { AxiosRequestConfig } from "axios"
 
 export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3030/api",
@@ -42,6 +42,19 @@ export async function loginApp(data: { username: string; password: string; remem
   return res.data
 }
 
+// 注销：调用后端清除刷新令牌 Cookie，并移除前端 access_token
+export async function logoutApp(): Promise<{ success?: boolean } | null> {
+  try {
+    const res = await apiClient.post("/auth/logout")
+    setAccessToken(null)
+    return res.data || { success: true }
+  } catch (e) {
+    // 即使后端失败，也确保前端清理 token，避免自动刷新重新登录
+    setAccessToken(null)
+    return null
+  }
+}
+
 export function getAccessToken() {
   return accessToken
 }
@@ -51,7 +64,7 @@ apiClient.interceptors.response.use(
   (resp) => resp,
   async (error) => {
     const { response, config } = error || {}
-    const original: any = config || {}
+    const original: AxiosRequestConfig & { _retry?: boolean } = config || {}
     if (!response) return Promise.reject(error)
     const status = response.status
     // Avoid recursion for refresh endpoint itself

@@ -1,13 +1,13 @@
 import * as React from "react"
 import { twMerge } from "tailwind-merge"
-import clsx from "clsx"
+import clsx, { ClassValue } from "clsx"
 
-function cn(...inputs: any[]) {
+function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)} {...props} />
+  return <div className={cn("rounded-lg border border-border bg-card text-card-foreground shadow-sm", className)} {...props} />
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

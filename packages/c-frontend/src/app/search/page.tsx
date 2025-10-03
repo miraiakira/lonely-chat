@@ -5,6 +5,7 @@ import { searchPosts, type PostSearchItem } from "@/lib/search.api"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+// 使用原生 img 标签展示图片
 
 export default function SearchPage() {
   const [q, setQ] = useState("")
@@ -37,19 +38,28 @@ export default function SearchPage() {
   }
 
   const formatTime = (ts: number | string) => {
-    try {
-      const n = typeof ts === 'number' ? ts : Date.parse(ts)
-      const d = new Date(n)
-      const pad = (x: number) => String(x).padStart(2, "0")
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-    } catch {
-      return String(ts)
+    let n: number | null = null
+    if (typeof ts === 'number') {
+      n = ts < 1e12 ? ts * 1000 : ts
+    } else {
+      const num = Number(ts)
+      if (!Number.isNaN(num)) {
+        n = num < 1e12 ? num * 1000 : num
+      } else {
+        const parsed = Date.parse(ts)
+        n = Number.isNaN(parsed) ? null : parsed
+      }
     }
+    if (!n) return 'Invalid Date'
+    const d = new Date(n)
+    if (Number.isNaN(d.getTime())) return 'Invalid Date'
+    const pad = (x: number) => String(x).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
   return (
     <main className="min-h-dvh px-4 py-6">
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="mx-auto w-full max-w-7xl">
         <div className="flex gap-2">
           <Input placeholder="搜索动态关键词..." value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') onSearch() }} />
           <Button 
@@ -78,9 +88,8 @@ export default function SearchPage() {
               {!!(it.images?.length) && (
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {it.images!.slice(0, 9).map((url, idx) => (
-                    <div key={idx} className="aspect-square overflow-hidden rounded-md bg-muted">
-                      {/* 简化处理：img 直接展示，后续可替换为 Next/Image 以优化加载 */}
-                      <img src={url} alt="image" className="h-full w-full object-cover" />
+                    <div key={idx} className="overflow-hidden rounded-md bg-muted">
+                      <img src={url} alt="image" className="w-full h-auto object-contain" />
                     </div>
                   ))}
                 </div>

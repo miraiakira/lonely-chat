@@ -30,15 +30,16 @@ export default function RegisterPage() {
       // TODO: 接入后端注册接口后替换此处逻辑
       await login(username, password, true)
       router.push("/chat")
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "注册失败")
+    } catch (e: unknown) {
+      const error = e as { response?: { data?: { message?: string } }; message?: string }
+      setError(error?.response?.data?.message || error?.message || "注册失败")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <main className="min-h-dvh p-6 max-w-sm mx-auto flex flex-col gap-6">
+    <main className="min-h-dvh p-6 max-w-7xl mx-auto flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">注册</h1>
         <div className="flex items-center gap-2">

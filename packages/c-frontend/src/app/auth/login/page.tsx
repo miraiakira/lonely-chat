@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { ApiError, NetworkError } from "@/types/common"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -35,8 +36,9 @@ export default function LoginPage() {
     try {
       await login(username, password, remember)
       router.push("/chat")
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "登录失败")
+    } catch (e: unknown) {
+      const error = e as ApiError | NetworkError | Error
+      setError(error?.message || "登录失败")
     } finally {
       setLoading(false)
     }
@@ -44,7 +46,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-dvh p-6 flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/40">
-      <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+      <div className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
         {/* 左侧品牌与卖点（中等及以上尺寸显示） */}
         <div className="relative hidden md:flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-8">
           <div

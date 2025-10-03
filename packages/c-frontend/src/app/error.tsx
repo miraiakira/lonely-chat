@@ -11,7 +11,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
   }, [error])
 
   return (
-    <main className="min-h-dvh p-6 max-w-3xl mx-auto flex flex-col gap-6">
+    <main className="min-h-dvh p-6 max-w-7xl mx-auto flex flex-col gap-6">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">出错了</CardTitle>

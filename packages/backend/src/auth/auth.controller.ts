@@ -142,6 +142,7 @@ export class AuthController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(200)
   async logout(@Request() req, @Res({ passthrough: true }) res: Response) {

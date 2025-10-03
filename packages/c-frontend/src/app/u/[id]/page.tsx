@@ -62,7 +62,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   }, [])
 
   return (
-    <main className="min-h-dvh p-6 max-w-4xl mx-auto flex flex-col gap-6">
+    <main className="min-h-dvh p-6 max-w-7xl mx-auto flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">用户主页：{username}</h1>
         <div className="flex items-center gap-2">

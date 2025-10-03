@@ -1,5 +1,6 @@
 import { io, Socket } from "socket.io-client"
 import { getAccessToken } from "@/lib/apiClient"
+import { RealtimeEvent } from "@/types/common"
 
 let socket: Socket | null = null
 
@@ -30,17 +31,25 @@ export function initRealtimeLogging() {
   s.on("welcome", (data) => console.log("[ws] welcome", data))
 }
 
+export function disconnectSocket() {
+  const s = getSocket()
+  if (!s) return
+  try {
+    s.disconnect()
+  } catch {}
+}
+
 export function onGroupCreated(handler: (evt: { id: string; title?: string | null; avatar?: string | null; participants: string[] }) => void) {
   const s = getSocket()
   if (!s) return () => {}
-  const fn = (payload: any) => {
+  const fn = (payload: unknown) => {
     try {
-      const evt = payload && typeof payload === 'object' ? payload : null
+      const evt = payload && typeof payload === 'object' ? payload as Record<string, unknown> : null
       if (!evt) return
       const id = String(evt.id)
-      const title = evt.title ?? null
+      const title = typeof evt.title === 'string' ? evt.title : null
       const avatar = typeof evt.avatar === 'string' ? evt.avatar : null
-      const participants = Array.isArray(evt.participants) ? evt.participants.map((x: any) => String(x)) : []
+      const participants = Array.isArray(evt.participants) ? evt.participants.map((x: unknown) => String(x)) : []
       handler({ id, title, avatar: avatar ?? undefined, participants })
     } catch {}
   }

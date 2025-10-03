@@ -8,10 +8,12 @@ import { Separator } from "@/components/ui/separator";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from '@solana/web3.js';
 import { getRewardsSummary, checkin, claimTokens } from "../../lib/rewards.api";
-import { loginApp, fetchMe } from "../../lib/apiClient";
+import { fetchMe } from "../../lib/apiClient";
 import type { RewardsSummary } from "../../lib/rewards.api";
 import { WalletModalButton } from '@/components/Wallet/WalletModalButton';
-import { Gift, Coins, CheckCircle, HelpCircle } from 'lucide-react';
+import { Gift, Coins, CheckCircle, HelpCircle, Edit } from 'lucide-react';
+import UserProfileEdit from '@/components/UserProfileEdit';
+import type { User } from '@/lib/user.api';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3030/api";
 
@@ -32,9 +34,10 @@ interface UserProfileData {
 export default function MePage() {
   const { connection } = useConnection();
   const { publicKey, signTransaction } = useWallet();
-  const [user, setUser] = useState<UserProfileData | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [rewards, setRewards] = useState<RewardsSummary | null>(null);
-  
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
   const [checkingIn, setCheckingIn] = useState(false);
   const [checkinError, setCheckinError] = useState("");
 
@@ -44,7 +47,6 @@ export default function MePage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        await loginApp({ username: 'superadmin', password: 'password' });
         const [userRes, rewardsRes] = await Promise.all([
           fetchMe(),
           getRewardsSummary(),
@@ -52,7 +54,7 @@ export default function MePage() {
         setUser(userRes);
         setRewards(rewardsRes);
       } catch (error) {
-        console.error("Failed to fetch initial data", error);
+        console.error('Failed to fetch data:', error);
       }
     }
     fetchData();
@@ -62,13 +64,13 @@ export default function MePage() {
     setCheckingIn(true);
     setCheckinError("");
     try {
-      const result = await checkin();
-      setRewards(prev => ({
-        ...prev!,
-        ...result,
-      }));
-    } catch (error: any) {
-      setCheckinError(error.message || "签到时发生网络错误。");
+      await checkin();
+      // Refresh rewards summary after successful checkin
+      const updatedRewards = await getRewardsSummary();
+      setRewards(updatedRewards);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setCheckinError(`签到失败: ${errorMessage}`);
     } finally {
       setCheckingIn(false);
     }
@@ -76,27 +78,17 @@ export default function MePage() {
 
   const doClaim = async () => {
     if (!publicKey || !signTransaction) {
-      setClaimMsg("请先连接钱包并授权");
+      setClaimMsg("请先连接钱包");
       return;
     }
+
     setClaiming(true);
-    setClaimMsg("正在创建交易...");
+    setClaimMsg("");
     try {
-      const transaction = new Transaction();
-      // The backend doesn't require any specific instructions for now,
-      // so we can create an empty transaction.
-
-      setClaimMsg("请在钱包中签名交易...");
-      const signedTransaction = await signTransaction(transaction);
-      const serializedTransaction = signedTransaction.serialize().toString('base64');
-
-      setClaimMsg("正在提交领取请求...");
       const result = await claimTokens({
-        chain: "solana",
-        wallet: publicKey.toBase58(),
-        tx: serializedTransaction,
+        chain: 'solana',
+        wallet: publicKey.toString(),
       });
-
       if (result.status === 'done') {
         setClaimMsg(`领取成功！交易 ID: ${result.tx}`);
         // Refresh rewards summary after successful claim
@@ -104,11 +96,16 @@ export default function MePage() {
       } else {
         setClaimMsg(`领取请求已提交，状态: ${result.status}`);
       }
-    } catch (error: any) {
-      setClaimMsg(`领取失败: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setClaimMsg(`领取失败: ${errorMessage}`);
     } finally {
       setClaiming(false);
     }
+  };
+
+  const handleEditSave = (updatedUser: User) => {
+    setUser(updatedUser);
   };
 
   if (!user || !rewards) {
@@ -122,26 +119,42 @@ export default function MePage() {
     );
   }
 
-  const userAvatar = getAvatarUrl((user as any)?.profile?.avatar);
+  const userAvatar = getAvatarUrl(user?.profile?.avatar);
+  const hasUserAvatar = !!userAvatar;
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1 space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-center space-x-4">
               <Avatar className="h-20 w-20">
-                {userAvatar ? (
-                  <AvatarImage src={userAvatar} alt={user.nickname} />
+                {hasUserAvatar ? (
+                  <AvatarImage
+                    src={userAvatar}
+                    alt={user.profile?.nickname || user.username}
+                    className="object-cover"
+                  />
                 ) : (
-                  <AvatarFallback className="bg-muted text-muted-foreground flex items-center justify-center text-3xl font-semibold">
-                    {user.nickname?.charAt(0).toUpperCase() || 'S'}
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-3xl font-semibold">
+                    {(user.profile?.nickname || user.username)?.charAt(0).toUpperCase() || 'U'}
                   </AvatarFallback>
                 )}
               </Avatar>
-              <div className="space-y-1">
-                <h1 className="text-2xl font-bold">{user.nickname}</h1>
-                <p className="text-sm text-muted-foreground">{user.bio}</p>
+              <div className="space-y-1 flex-1">
+                <div className="flex items-center justify-between">
+                  <h1 className="">{user.profile?.nickname || user.username}</h1>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditDialogOpen(true)}
+                    className="ml-2 transition-all duration-200 hover:scale-105"
+                  >
+                    <Edit className="h-4 w-4 mr-1" />
+                    编辑
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">{user.profile?.bio || '暂无个人简介'}</p>
                 <p className="text-xs text-muted-foreground">ID: {user.id}</p>
               </div>
             </CardHeader>
@@ -213,6 +226,14 @@ export default function MePage() {
           </Card>
         </div>
       </div>
+
+      {/* 编辑个人信息弹框 */}
+      <UserProfileEdit
+        user={user}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        onSave={handleEditSave}
+      />
     </div>
   );
 }

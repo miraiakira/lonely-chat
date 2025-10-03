@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient'
+import { Comment } from '@/types/common'
 
 export async function likePost(id: string) {
   const res = await apiClient.post(`/posts/${id}/like`)
@@ -21,7 +22,7 @@ export async function listComments(id: string, { limit = 50, offset = 0 } = {}) 
 }
 
 export async function addComment(id: string, content: string, parentCommentId?: string | number) {
-  const payload: any = { content }
+  const payload: { content: string; parentCommentId?: number } = { content }
   // 后端要求整数且 >= 1，这里做健壮性转换与校验
   if (parentCommentId !== undefined && parentCommentId !== null) {
     let pid: number | null = null

@@ -1,6 +1,14 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null) {
+  if (!ref) return
+  if (typeof ref === "function") ref(value)
+  else {
+    ;(ref as React.MutableRefObject<T | null>).current = value
+  }
+}
+
 interface PopoverContextValue {
   open: boolean
   setOpen: (open: boolean) => void
@@ -71,10 +79,12 @@ export const PopoverTrigger = React.forwardRef<HTMLElement, PopoverTriggerProps>
     }
 
     if (asChild && React.isValidElement(props.children)) {
-      return React.cloneElement(props.children as any, {
-        ref: (node: HTMLElement) => {
-          if (typeof ref === "function") ref(node)
-          else if (ref && typeof (ref as any).current !== "undefined") (ref as any).current = node
+      const child = props.children as React.ReactElement<
+        React.HTMLAttributes<HTMLElement> & React.RefAttributes<HTMLElement>
+      >
+      return React.cloneElement(child, {
+        ref: (node: HTMLElement | null) => {
+          assignRef<HTMLElement>(ref, node)
           ctx.triggerRef.current = node
         },
         onClick: handleClick,
@@ -83,9 +93,8 @@ export const PopoverTrigger = React.forwardRef<HTMLElement, PopoverTriggerProps>
 
     return (
       <button
-        ref={(node: any) => {
-          if (typeof ref === "function") ref(node)
-          else if (ref && typeof (ref as any).current !== "undefined") (ref as any).current = node
+        ref={(node: HTMLButtonElement | null) => {
+          assignRef<HTMLElement>(ref, node)
           ctx.triggerRef.current = node
         }}
         onClick={handleClick}
@@ -149,14 +158,13 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
 
     return (
       <div
-        ref={(node) => {
-          if (typeof ref === "function") ref(node)
-          else if (ref && typeof (ref as any).current !== "undefined") (ref as any).current = node
+        ref={(node: HTMLDivElement | null) => {
+          assignRef<HTMLElement>(ref, node)
           ctx.contentRef.current = node
         }}
         className={cn(
-          // 不透明背景 + 边框 + 阴影
-          "absolute z-50 rounded-md border bg-background text-foreground shadow-md outline-none",
+          // 不透明背景 + 边框 + 阴影（使用统一的 popover 变量）
+          "absolute z-50 rounded-md border bg-popover text-popover-foreground shadow-md outline-none",
           // 动画/过渡
           "transition-all duration-200 ease-out will-change-transform",
           motionClass,

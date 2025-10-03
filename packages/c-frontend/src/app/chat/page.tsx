@@ -9,19 +9,21 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Socket } from "socket.io-client"
 import { initRealtimeLogging, getSocket, onGroupCreated } from "@/lib/realtime"
-import { useEffect, useMemo, useState, useRef, type ChangeEvent } from "react"
+import { useEffect, useMemo, useState, useRef, useCallback, type ChangeEvent } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { getAccessToken } from "@/lib/apiClient"
 import { useChatStore } from "@/store/chat"
 import { Send, Plus, MessageSquareMore, CheckCircle, XCircle } from "lucide-react"
-import SkinSwitcher from "@/components/skin-switcher"
 import React from "react"
-import { AutoSizer, List, CellMeasurer, CellMeasurerCache } from "react-virtualized"
+import { AutoSizer, List, CellMeasurer, CellMeasurerCache, type ListRowProps } from "react-virtualized"
 import type { Message } from "@/lib/chat.api"
+import type { User, UserProfile } from "@/lib/user.api"
 import { Checkbox } from "@/components/ui/checkbox"
 import { createGroup as apiCreateGroup } from "@/lib/chat.api"
 import { useSearchParams } from "next/navigation"
+import { ChatHeader } from "@/components/chat/ChatHeader"
 
 export default function ChatPage() {
   const { user, loading } = useAuth()
@@ -32,31 +34,33 @@ export default function ChatPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
-  const {
-    q, convs, activeId, messages, draft,
-    peopleQ, friends, found, inboundReqs,
-    init, setQ, setPeopleQ, setActive, setDraft,
-    send, searchPeople, addFriend, accept, decline, removeFriend,
-    receive, refreshLists,
-  } = useChatStore()
-
-  const activeConv = useMemo(() => convs.find(c => c.id === activeId) || null, [convs, activeId])
-  const isDirectStart = useMemo(() => !!activeId && activeId.startsWith("direct:"), [activeId])
-  const directUserId = useMemo(() => (isDirectStart ? (activeId as string).split(":")[1] : null), [isDirectStart, activeId])
-  const directUserName = useMemo(() => {
-    if (!isDirectStart || !directUserId) return null
-    const f = friends.find(x => x.id === directUserId)
-    return f?.name || `用户 ${directUserId}`
-  }, [isDirectStart, directUserId, friends])
-  const headerName = useMemo(() => activeConv?.name || directUserName || "消息", [activeConv?.name, directUserName])
-  const headerAvatar = useMemo(() => {
-    if (activeConv?.avatar) return activeConv.avatar
-    if (isDirectStart && directUserId) {
-      const f = friends.find(x => x.id === directUserId)
-      return f?.avatar
-    }
-    return undefined
-  }, [activeConv?.avatar, isDirectStart, directUserId, friends])
+  // 拆分订阅，避免无关状态（如 draft）变化导致整个组件重渲染
+  const q = useChatStore(s => s.q)
+  const convs = useChatStore(s => s.convs)
+  const activeId = useChatStore(s => s.activeId)
+  const messages = useChatStore(s => s.messages)
+  const draft = useChatStore(s => s.draft)
+  const peopleQ = useChatStore(s => s.peopleQ)
+  const friends = useChatStore(s => s.friends)
+  const found = useChatStore(s => s.found)
+  const inboundReqs = useChatStore(s => s.inboundReqs)
+  const init = useChatStore(s => s.init)
+  const setQ = useChatStore(s => s.setQ)
+  const setPeopleQ = useChatStore(s => s.setPeopleQ)
+  const setActive = useChatStore(s => s.setActive)
+  const setDraft = useChatStore(s => s.setDraft)
+  const send = useChatStore(s => s.send)
+  const searchPeople = useChatStore(s => s.searchPeople)
+  const addFriend = useChatStore(s => s.addFriend)
+  const accept = useChatStore(s => s.accept)
+  const decline = useChatStore(s => s.decline)
+  const removeFriend = useChatStore(s => s.removeFriend)
+  const receive = useChatStore(s => s.receive)
+  const refreshLists = useChatStore(s => s.refreshLists)
+  const getIsDirectStart = useChatStore(s => s.getIsDirectStart)
+  const getDirectUserName = useChatStore(s => s.getDirectUserName)
+  const getActiveConv = useChatStore(s => s.getActiveConv)
+  const getHeaderName = useChatStore(s => s.getHeaderName)
 
   // 名称与时间格式化（使用 UTC，避免 SSR/CSR 本地化差异导致 Hydration mismatch）
   const pad2 = (n: number) => String(n).padStart(2, "0")
@@ -82,11 +86,12 @@ export default function ChatPage() {
     const meId = String(user?.id || "me")
     if (String(senderId) === meId) return user?.username || "我"
     const f = friends.find(x => x.id === String(senderId))
+    const activeConv = getActiveConv()
     return f?.name || (activeConv?.name && activeConv?.name) || `用户 ${senderId}`
   }
   const getSenderAvatar = (senderId: string) => {
     const meId = String(user?.id || "me")
-    if (String(senderId) === meId) return (user as any)?.profile?.avatar || undefined
+    if (String(senderId) === meId) return (user as User)?.profile?.avatar || undefined
     const f = friends.find(x => x.id === String(senderId))
     return f?.avatar || undefined
   }
@@ -140,7 +145,7 @@ export default function ChatPage() {
   }
   // --- 消息自动滚动到底部 + 虚拟列表 ---
   // 使用 react-virtualized 实现虚拟列表与吸底
-  const listRef = useRef<any>(null)
+  const listRef = useRef<List>(null)
   const DEFAULT_ROW_H = 84
   const NEAR_BOTTOM_PX = 80
   const OVERSCAN = 10
@@ -160,7 +165,7 @@ export default function ChatPage() {
         out.push({ type: 'separator', key: `sep-${day}`, text: formatDateUTC(d) })
         lastDay = day
       }
-      out.push({ type: 'message', key: `msg-${String((m as any).id ?? m.timestamp)}`, msg: m })
+      out.push({ type: 'message', key: `msg-${String(m.id ?? m.timestamp)}`, msg: m })
     }
     return out
   }, [messages])
@@ -170,6 +175,69 @@ export default function ChatPage() {
     setStickBottom(near)
     if (near) setNewCount(0)
   }
+
+  // 稳定 rowRenderer 的引用，避免与输入框状态变更产生不必要的列表重渲染
+  const rowRenderer = useCallback(({ index, key, style, parent }: ListRowProps) => {
+    const row = rows[index]
+    if (row.type === 'separator') {
+      return (
+        <CellMeasurer
+          key={key}
+          cache={cacheRef.current}
+          columnIndex={0}
+          rowIndex={index}
+          parent={parent}
+        >
+          <div style={style} className="px-1 py-2">
+            <div className="flex items-center gap-2 my-2">
+              <div className="h-px bg-muted flex-1" />
+              <div className="text-[11px] text-muted-foreground whitespace-nowrap">{row.text}</div>
+              <div className="h-px bg-muted flex-1" />
+            </div>
+          </div>
+        </CellMeasurer>
+      )
+    }
+    const m: Message = row.msg
+    const mine = String(m.senderId) === String(user?.id || "me")
+    const name = m.senderName || getSenderName(m.senderId)
+    const time = formatTime(m.timestamp)
+    const avatar = m.senderAvatar ?? getSenderAvatar(m.senderId)
+    return (
+      <CellMeasurer
+        key={key}
+        cache={cacheRef.current}
+        columnIndex={0}
+        rowIndex={index}
+        parent={parent}
+      >
+        <div style={style} className="px-1 py-1">
+          <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            {!mine && (
+              <div className="mr-2 mt-1">
+                <MessageAvatar src={avatar} alt={name} fallbackText={getInitial(name)} className="h-7 w-7" />
+              </div>
+            )}
+            <div className={`max-w-[70%] ${mine ? "items-end" : "items-start"} flex flex-col gap-1`}>
+              <div className={`text-[11px] text-muted-foreground ${mine ? "text-right" : "text-left"}`}>
+                <span className="align-middle">{name}</span>
+                <span className="mx-1">·</span>
+                <span className="align-middle">{time}</span>
+              </div>
+              <div className={`rounded-md px-3 py-2 text-sm shadow-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                <div>{m.content}</div>
+              </div>
+            </div>
+            {mine && (
+              <div className="ml-2 mt-1">
+                <MessageAvatar src={(user as User)?.profile?.avatar} alt={user?.username || "我"} fallbackText={getInitial(user?.username || "我")} className="h-8 w-8" />
+              </div>
+            )}
+          </div>
+        </div>
+      </CellMeasurer>
+    )
+  }, [rows, user?.id, user?.username, friends])
 
   // 消息变更：重算高度；根据来源/贴底状态决定是否滚底；管理“新消息”提示
   useEffect(() => {
@@ -204,12 +272,19 @@ export default function ChatPage() {
     initRealtimeLogging()
     const s = getSocket()
     if (!s) return
-    const onAuthErr = (payload: any) => {
+    // 定义WebSocket事件类型
+    type AuthErrorPayload = {
+      message?: string
+    }
+
+    type MessagePayload = Message
+
+    const onAuthErr = (payload: AuthErrorPayload) => {
       console.warn("[ws] auth_error", payload)
       setWsError(payload?.message || "实时连接鉴权失败")
     }
     const onConnect = () => setWsError(null)
-    const onMessage = (msg: any) => {
+    const onMessage = (msg: MessagePayload) => {
       // 后端已返回前端 Message 结构
       receive(msg)
     }
@@ -218,7 +293,7 @@ export default function ChatPage() {
       await refreshLists()
       const { activeId } = useChatStore.getState()
       if (!activeId || !activeId.startsWith('direct:')) {
-        try { await setActive(evt.id) } catch {}
+        try { await setActive(evt.id) } catch { }
       }
     })
     s.on("auth_error", onAuthErr)
@@ -235,14 +310,14 @@ export default function ChatPage() {
   // --- 加载初始化 ---
   useEffect(() => {
     // 初始化会话列表、好友列表等
-    init().catch(() => {})
+    init().catch(() => { })
   }, [init])
 
   // URL 参数：/chat?conv=xxx 时自动切换到该会话
   useEffect(() => {
     const convId = searchParams.get('conv')
     if (convId && convId !== activeId) {
-      setActive(convId).catch(() => {})
+      setActive(convId).catch(() => { })
     }
     // 仅在 searchParams 或 activeId 变化时尝试切换
   }, [searchParams, activeId, setActive])
@@ -255,15 +330,17 @@ export default function ChatPage() {
     const token = getAccessToken()
     if (token && !s.connected) {
       try {
-        ;(s as any).auth = { token }
+        // Socket.IO auth property expects a function that returns auth data
+        ; (s as Socket & { auth?: () => { token: string } }).auth = () => ({ token })
         s.connect()
-      } catch {}
+      } catch { }
     }
   }, [user])
 
   // 发送与好友操作
   async function onSend() {
-    await send(user?.id || "me")
+    const senderId = user?.id != null ? String(user.id) : "me"
+    await send(senderId)
   }
   async function onSearchPeople() { searchPeople() }
   async function onAddFriend(id: string) {
@@ -288,7 +365,7 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="min-h-dvh p-0 md:p-4 max-w-[1200px] mx-auto">
+    <div className="min-h-dvh p-0 md:p-4 max-w-7xl mx-auto">
       {/* Toast 容器 */}
       <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] space-y-2 w-full max-w-xs" aria-live="polite" aria-atomic="true">
         {toasts.map(t => (
@@ -305,17 +382,6 @@ export default function ChatPage() {
           </div>
         ))}
       </div>
-
-      <header className="px-4 py-3 flex items-center justify-between sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold">聊天</h1>
-          {user && <span className="text-sm text-muted-foreground">{user.username}</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          <SkinSwitcher compact />
-          <Button asChild variant="outline"><Link href="/">返回首页</Link></Button>
-        </div>
-      </header>
 
       {wsError && (
         <div className="mx-4 rounded-md border p-3 bg-red-50 text-red-700 text-sm">
@@ -334,7 +400,7 @@ export default function ChatPage() {
         {/* Conversations */}
         <Card className="overflow-hidden border-muted">
           <CardHeader className="pb-2">
-            <div className="flex items-center gap-2 border-b pb-2">
+            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
               <button
                 className={`text-sm px-2 py-1 rounded-md ${leftTab === 'convs' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted'}`}
                 onClick={() => setLeftTab('convs')}
@@ -358,36 +424,36 @@ export default function ChatPage() {
                     {convs
                       .filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()))
                       .map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => setActive(c.id)}
-                        className={`w-full py-2 px-2 rounded-md hover:bg-accent/60 transition-colors flex items-center gap-3 ${activeId===c.id? "bg-accent" : ""}`}
+                        <button
+                          key={c.id}
+                          onClick={() => setActive(c.id)}
+                          className={`w-full py-2 px-2 rounded-md hover:bg-accent/60 transition-colors flex items-center gap-3 ${activeId === c.id ? "bg-accent" : ""}`}
                         >
-                          <MessageAvatar src={c.avatar || undefined} alt={c.name} fallbackText={c.name.slice(0,2)} className="h-8 w-8" />
+                          <MessageAvatar src={c.avatar || undefined} alt={c.name} fallbackText={c.name.slice(0, 2)} className="h-8 w-8" />
                           <div className="flex-1 text-left">
                             <div className="flex items-center justify-between">
                               <div className="text-sm font-medium line-clamp-1">{c.name}</div>
-                              {c.unread>0 && <Badge variant="secondary" className="text-[10px]">{c.unread}</Badge>}
+                              {c.unread > 0 && <Badge variant="secondary" className="text-[10px]">{c.unread}</Badge>}
                             </div>
                             <div className="text-xs text-muted-foreground line-clamp-1">{c.last}</div>
                           </div>
                         </button>
-                    ))}
+                      ))}
                   </div>
                 </ScrollArea>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => setLeftTab('friends')}><MessageSquareMore className="h-4 w-4 mr-1"/>发起私聊</Button>
-                  <Button size="sm" variant="outline" onClick={() => setGroupOpen(true)}><Plus className="h-4 w-4 mr-1"/>创建群聊</Button>
+                  <Button size="sm" onClick={() => setLeftTab('friends')}><MessageSquareMore className="h-4 w-4 mr-1" />发起私聊</Button>
+                  <Button size="sm" variant="outline" onClick={() => setGroupOpen(true)}><Plus className="h-4 w-4 mr-1" />创建群聊</Button>
                 </div>
               </>
             ) : leftTab === 'friends' ? (
               <div className="space-y-2 pt-2">
                 <ScrollArea className="h-[420px] pr-2">
-                  <div className="divide-y">
+                  <div className="divide-y divide-[var(--border-subtle)]">
                     {friends.map(f => (
                       <div key={f.id} className="py-2 px-1 flex items-center justify-between">
                         <div className="flex items-center gap-2 min-w-0">
-                          <MessageAvatar src={f.avatar} alt={f.name} fallbackText={f.name.slice(0,2)} className="h-7 w-7" />
+                          <MessageAvatar src={f.avatar} alt={f.name} fallbackText={f.name.slice(0, 2)} className="h-7 w-7" />
                           <div className="text-sm truncate">{f.name}</div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -411,7 +477,7 @@ export default function ChatPage() {
                     <Input
                       placeholder="输入用户名或 ID"
                       value={peopleQ}
-                      onChange={(e: ChangeEvent<HTMLInputElement>)=>setPeopleQ(e.target.value)}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setPeopleQ(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") onSearchPeople() }}
                     />
                     <Button onClick={onSearchPeople}>搜索</Button>
@@ -421,7 +487,7 @@ export default function ChatPage() {
                       {found.map(u => (
                         <div key={u.id} className="py-2 px-1 flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <MessageAvatar src={u.avatar} alt={u.name} fallbackText={u.name.slice(0,2)} className="h-7 w-7" />
+                            <MessageAvatar src={u.avatar} alt={u.name} fallbackText={u.name.slice(0, 2)} className="h-7 w-7" />
                             <div className="text-sm">{u.name}</div>
                           </div>
                           <Button size="sm" onClick={() => onAddFriend(u.id)}>添加</Button>
@@ -440,7 +506,7 @@ export default function ChatPage() {
                       {inboundReqs.map(r => (
                         <div key={r.id} className="py-2 px-1 flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <MessageAvatar src={r.from.avatar} alt={r.from.name} fallbackText={r.from.name.slice(0,2)} className="h-7 w-7" />
+                            <MessageAvatar src={r.from.avatar} alt={r.from.name} fallbackText={r.from.name.slice(0, 2)} className="h-7 w-7" />
                             <div className="text-sm">{r.from.name}</div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -461,16 +527,11 @@ export default function ChatPage() {
         <Card className="min-h-[540px] max-h-[70vh] flex flex-col">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
-              <div className="flex items-center gap-2">
-                {headerName && (
-                  <MessageAvatar src={headerAvatar} alt={headerName} fallbackText={getInitial(headerName)} className="h-5 w-5" />
-                )}
-                <span>{headerName}</span>
-              </div>
+              <ChatHeader />
             </CardTitle>
           </CardHeader>
           <CardContent className="flex-1 min-h-0 flex flex-col gap-3">
-            <div className="relative flex-1 min-h-0 border rounded-md p-2 bg-background">
+            <div className="relative flex-1 min-h-0 border border-[var(--border-subtle)] rounded-md p-2 bg-background">
               {mounted ? (
                 <AutoSizer>
                   {({ width, height }: { width: number; height: number }) => (
@@ -483,67 +544,8 @@ export default function ChatPage() {
                       rowHeight={cacheRef.current.rowHeight}
                       overscanRowCount={OVERSCAN}
                       onScroll={onListScroll}
-                      rowRenderer={({ index, key, style, parent }: any) => {
-                        const row = rows[index]
-                        if (row.type === 'separator') {
-                          return (
-                            <CellMeasurer
-                              key={key}
-                              cache={cacheRef.current}
-                              columnIndex={0}
-                              rowIndex={index}
-                              parent={parent}
-                            >
-                              <div style={style} className="px-1 py-2">
-                                <div className="flex items-center gap-2 my-2">
-                                  <div className="h-px bg-muted flex-1" />
-                                  <div className="text-[11px] text-muted-foreground whitespace-nowrap">{row.text}</div>
-                                  <div className="h-px bg-muted flex-1" />
-                                </div>
-                              </div>
-                            </CellMeasurer>
-                          )
-                        }
-                        const m: Message = row.msg
-                        const mine = String(m.senderId) === String(user?.id || "me")
-                        const name = m.senderName || getSenderName(m.senderId)
-                        const time = formatTime(m.timestamp)
-                        const avatar = m.senderAvatar ?? getSenderAvatar(m.senderId)
-                        return (
-                          <CellMeasurer
-                            key={key}
-                            cache={cacheRef.current}
-                            columnIndex={0}
-                            rowIndex={index}
-                            parent={parent}
-                          >
-                            <div style={style} className="px-1 py-1">
-                              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                                {!mine && (
-                                  <div className="mr-2 mt-1">
-                                    <MessageAvatar src={avatar} alt={name} fallbackText={getInitial(name)} className="h-7 w-7" />
-                                  </div>
-                                )}
-                                <div className={`max-w-[70%] ${mine ? "items-end" : "items-start"} flex flex-col gap-1`}>
-                                  <div className={`text-[11px] text-muted-foreground ${mine ? "text-right" : "text-left"}`}>
-                                    <span className="align-middle">{name}</span>
-                                    <span className="mx-1">·</span>
-                                    <span className="align-middle">{time}</span>
-                                  </div>
-                                  <div className={`rounded-md px-3 py-2 text-sm shadow-sm ${mine ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                                    <div>{m.content}</div>
-                                  </div>
-                                </div>
-                                {mine && (
-                                  <div className="ml-2 mt-1">
-                                    <MessageAvatar src={(user as any)?.profile?.avatar} alt={user?.username || "我"} fallbackText={getInitial(user?.username || "我")} className="h-7 w-7" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </CellMeasurer>
-                        )
-                      }}
+                      rowRenderer={rowRenderer}
+                      className="rv-scroll"
                     />
                   )}
                 </AutoSizer>
@@ -559,18 +561,29 @@ export default function ChatPage() {
                   </Button>
                 </div>
               )}
-             </div>
+            </div>
             <div className="space-y-2">
               <Textarea
                 rows={3}
-                placeholder={activeConv ? `发消息给 ${activeConv.name}` : (isDirectStart && directUserName ? `发消息给 ${directUserName}` : "选择一个会话或从好友发起后再发送")}
+                placeholder={getActiveConv() ? `发消息给 ${getActiveConv()?.name}` : (getIsDirectStart() && getDirectUserName() ? `发消息给 ${getDirectUserName()}` : "选择一个会话或从好友发起后再发送")}
                 value={draft}
                 onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDraft(e.target.value)}
-                disabled={!activeConv && !isDirectStart}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    if ((getActiveConv() || getIsDirectStart()) && draft.trim()) {
+                      onSend()
+                    }
+                  }
+                }}
+                disabled={!getActiveConv() && !getIsDirectStart()}
               />
+              <div className="text-xs text-muted-foreground mt-1">
+                按住 Cmd + Enter 或 Windows Ctrl + Enter 发送
+              </div>
               <div className="flex justify-end sticky bottom-2">
-                <Button onClick={onSend} disabled={(!activeConv && !isDirectStart) || !draft.trim()} size="sm" className="shadow-sm">
-                  <Send className="h-4 w-4 mr-1"/>发送
+                <Button onClick={onSend} disabled={(!getActiveConv() && !getIsDirectStart()) || !draft.trim()} size="sm" className="shadow-sm">
+                  <Send className="h-4 w-4 mr-1" />发送
                 </Button>
               </div>
             </div>
@@ -608,7 +621,7 @@ export default function ChatPage() {
                     {friends.map(f => (
                       <label key={f.id} className="py-2 px-1 flex items-center justify-between cursor-pointer select-none">
                         <div className="flex items-center gap-2">
-                          <MessageAvatar src={f.avatar} alt={f.name} fallbackText={f.name.slice(0,2)} className="h-7 w-7" />
+                          <MessageAvatar src={f.avatar} alt={f.name} fallbackText={f.name.slice(0, 2)} className="h-7 w-7" />
                           <div className="text-sm">{f.name}</div>
                         </div>
                         <Checkbox
@@ -628,7 +641,7 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-    </main>
+    </div>
   )
 }
 

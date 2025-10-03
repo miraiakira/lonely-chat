@@ -1,8 +1,8 @@
 import * as React from "react"
 import { twMerge } from "tailwind-merge"
-import clsx from "clsx"
+import clsx, { type ClassValue } from "clsx"
 
-function cn(...inputs: any[]) {
+function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
@@ -19,7 +19,7 @@ export const Separator = React.forwardRef<HTMLDivElement, SeparatorProps>(
         role="separator"
         aria-orientation={orientation}
         className={cn(
-          isVertical ? "h-full w-px" : "h-px w-full",
+          isVertical ? "h-full w-[0.5px]" : "h-[0.5px] w-full",
           "bg-border",
           className
         )}
